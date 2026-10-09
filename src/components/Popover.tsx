@@ -86,8 +86,8 @@ export function Popover({
       if (anchor?.contains(target)) return;
       onClose();
     };
-    window.addEventListener('pointerdown', onPointer);
-    return () => window.removeEventListener('pointerdown', onPointer);
+    window.addEventListener('pointerdown', onPointer, true);
+    return () => window.removeEventListener('pointerdown', onPointer, true);
   }, [anchorElement, anchorRef, onClose]);
 
   return createPortal(
