@@ -863,19 +863,18 @@ function CommentNote({ comment, origin }: { comment: Comment; origin: { x: numbe
 
 function WordColor({ blockId, onClose }: { blockId: string; onClose: () => void }) {
   const { viewport } = useEditor();
-  const [fixed, setFixed] = useState<{ left: number; top: number } | null>(null);
-  useEffect(() => {
-    const node = document.querySelector(`[data-id="${blockId}"]`);
-    if (!(node instanceof HTMLElement)) return;
-    const rect = node.getBoundingClientRect();
-    const width = 248;
-    let left = rect.right + 8;
-    if (left + width > window.innerWidth - 12) left = Math.max(12, rect.left - width - 8);
-    const top = Math.min(Math.max(12, rect.top), window.innerHeight - 220);
-    setFixed({ left, top });
-  }, [blockId, viewport]);
-  if (!fixed) return null;
-  return <ColorPopover onClose={onClose} fixed={fixed} word />;
+  const node = document.querySelector(`[data-id="${CSS.escape(blockId)}"]`);
+  const anchor = node instanceof HTMLElement ? node : null;
+  if (!anchor) return null;
+  return (
+    <ColorPopover
+      onClose={onClose}
+      anchorElement={anchor}
+      prefer="around"
+      word
+      watch={`${viewport.x}:${viewport.y}:${viewport.zoom}`}
+    />
+  );
 }
 
 function hitDecoration(project: Project, x: number, y: number, place?: PlaceFn): string | null {

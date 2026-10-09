@@ -1,18 +1,24 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import { LOGIC_ROLES } from '../lib/catalog';
 import { buildExportSvg } from '../lib/exportSvg';
 import { downloadSvgAsPng, downloadText } from '../lib/files';
 import { projectFilename } from '../lib/filename';
 import { useEditor } from '../state/EditorContext';
 import type { FontFamilyId, FrameStyle } from '../types';
+import { LineBreakOptions } from './LineBreakOptions';
+import { Popover } from './Popover';
 
-export function GlobalFontMenu({ onClose }: { onClose: () => void }) {
+export function GlobalFontMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
   const font = api.project.typography;
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       <p className="menu-label">Skrift for hele lerretet</p>
       <FamilySizeWeight
         family={font.fontFamily}
@@ -22,21 +28,25 @@ export function GlobalFontMenu({ onClose }: { onClose: () => void }) {
         onSize={(fontSize) => api.setTypography({ fontSize })}
         onWeight={(fontWeight) => api.setTypography({ fontWeight })}
       />
-    </div>
+    </Popover>
   );
 }
 
-export function BlockFontMenu({ onClose }: { onClose: () => void }) {
+export function BlockFontMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
   const blocks = api.project.blocks.filter((block) => api.selection.includes(block.id));
   const first = blocks[0];
   const family = first?.fontFamily ?? api.project.typography.fontFamily;
   const size = first?.fontSize ?? api.project.typography.fontSize;
   const weight = first?.fontWeight ?? api.project.typography.fontWeight;
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       <p className="menu-label">Skrift på utvalget</p>
       <FamilySizeWeight
         family={family}
@@ -49,7 +59,7 @@ export function BlockFontMenu({ onClose }: { onClose: () => void }) {
       <button type="button" className="btn tiny" onClick={() => api.setBlockFont({ fontFamily: null, fontSize: null, fontWeight: null })}>
         Følg lerretet
       </button>
-    </div>
+    </Popover>
   );
 }
 
@@ -97,16 +107,20 @@ function FamilySizeWeight({
   );
 }
 
-export function FrameMenu({ onClose }: { onClose: () => void }) {
+export function FrameMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
   const [thickness, setThickness] = useState(3);
   const [style, setStyle] = useState<FrameStyle>('solid');
   const existing = api.project.frames.find((frame) => api.selection.includes(frame.targetId));
   const paint = (colorId: string, nextThickness = thickness, nextStyle = style) => api.applyFrame(colorId, nextThickness, nextStyle);
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       <p className="menu-label">Ramme</p>
       {api.project.frameColors.length === 0 && <p className="legend-empty">Legg til en farge i rammeforklaringen.</p>}
       <div className="frame-choices">
@@ -161,18 +175,22 @@ export function FrameMenu({ onClose }: { onClose: () => void }) {
           Fjern ramme
         </button>
       </div>
-    </div>
+    </Popover>
   );
 }
 
-export function RoleMenu({ onClose }: { onClose: () => void }) {
+export function RoleMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
   const blocks = api.project.blocks.filter((block) => api.selection.includes(block.id));
   const current = blocks.length === 1 ? blocks[0].role : null;
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       <p className="menu-label">Rolleikon</p>
       <div className="rail-list">
         {LOGIC_ROLES.map((role) => (
@@ -193,14 +211,18 @@ export function RoleMenu({ onClose }: { onClose: () => void }) {
       <button type="button" className="btn tiny" onClick={() => api.setRoleHidden(true)}>
         Skjul ikon
       </button>
-    </div>
+    </Popover>
   );
 }
 
-export function ViewMenu({ onClose }: { onClose: () => void }) {
+export function ViewMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
   const items: { label: string; on: boolean; toggle: () => void }[] = [
     { label: 'Kommentarer', on: api.project.showComments, toggle: api.toggleCommentsVisible },
     { label: 'Rolleikon', on: api.project.showRoleIcons, toggle: api.toggleRoleIcons },
@@ -208,20 +230,45 @@ export function ViewMenu({ onClose }: { onClose: () => void }) {
     { label: 'Rammenavn', on: api.project.showFrameLegend, toggle: api.toggleFrameLegend },
   ];
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       {items.map((item) => (
         <button key={item.label} type="button" className={item.on ? 'rail-btn active' : 'rail-btn'} aria-pressed={item.on} onClick={item.toggle}>
           {item.label}
         </button>
       ))}
-    </div>
+    </Popover>
   );
 }
 
-export function ExportMenu({ onClose }: { onClose: () => void }) {
+export function SettingsMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
   const api = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
-  useDismiss(ref, onClose);
+  return (
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
+      <LineBreakOptions value={api.project.lineBreaks} onChange={api.setLineBreaks} />
+      <p className="panel-note">
+        Dine egne linjeskift beholdes. Valgte tegn starter en ny rad i tillegg. Bryt linjer på nytt flytter ordene uten å fjerne piler, grupper eller rammer.
+      </p>
+      <button type="button" className="btn tiny block" disabled={api.project.blocks.length === 0} onClick={api.reflowLines}>
+        Bryt linjer på nytt
+      </button>
+    </Popover>
+  );
+}
+
+export function ExportMenu({
+  onClose,
+  anchorRef,
+}: {
+  onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
+}) {
+  const api = useEditor();
   const prefs = api.project.exportPrefs;
   const hasSelection = api.selection.length > 0;
 
@@ -244,7 +291,7 @@ export function ExportMenu({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="popover popover-menu" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <Popover className="popover-menu" prefer="below" anchorRef={anchorRef} onClose={onClose}>
       <p className="menu-label">Eksporter</p>
       <label className="check">
         <input type="checkbox" checked={prefs.hideComments} onChange={(event) => api.setExportPrefs({ hideComments: event.target.checked })} />
@@ -270,16 +317,6 @@ export function ExportMenu({ onClose }: { onClose: () => void }) {
           SVG, utvalg
         </button>
       </div>
-    </div>
+    </Popover>
   );
-}
-
-function useDismiss(ref: RefObject<HTMLDivElement | null>, onClose: () => void) {
-  useEffect(() => {
-    const onPointer = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    window.addEventListener('pointerdown', onPointer);
-    return () => window.removeEventListener('pointerdown', onPointer);
-  }, [onClose, ref]);
 }

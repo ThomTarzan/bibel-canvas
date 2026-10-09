@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { tokenizeLine } from '../lib/tokenize';
 import { useEditor } from '../state/EditorContext';
 import { ColorPopover } from './ColorPopover';
@@ -10,6 +10,10 @@ export function SelectionBar() {
   const [frameOpen, setFrameOpen] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
   const [fontOpen, setFontOpen] = useState(false);
+  const colorRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const roleRef = useRef<HTMLDivElement>(null);
+  const fontRef = useRef<HTMLDivElement>(null);
   const blocks = api.project.blocks.filter((block) => api.selection.includes(block.id));
   const groupsSelected = api.selection.some((id) => api.project.groups.some((group) => group.id === id));
   const canGroup = blocks.length >= 2;
@@ -40,7 +44,7 @@ export function SelectionBar() {
       <button type="button" className="btn" disabled={!canSplit} onClick={api.splitSelection}>
         Del opp
       </button>
-      <div className="color-anchor">
+      <div className="color-anchor" ref={colorRef}>
         <button
           type="button"
           className={colorOpen ? 'btn active' : 'btn'}
@@ -50,25 +54,25 @@ export function SelectionBar() {
         >
           Farge
         </button>
-        {colorOpen && <ColorPopover onClose={() => setColorOpen(false)} />}
+        {colorOpen && <ColorPopover anchorRef={colorRef} onClose={() => setColorOpen(false)} />}
       </div>
-      <div className="color-anchor">
+      <div className="color-anchor" ref={frameRef}>
         <button type="button" className={frameOpen ? 'btn active' : 'btn'} disabled={!canGroup && blocks.length === 0 && !groupsSelected} onClick={() => setFrameOpen((open) => !open)}>
           Ramme
         </button>
-        {frameOpen && <FrameMenu onClose={() => setFrameOpen(false)} />}
+        {frameOpen && <FrameMenu anchorRef={frameRef} onClose={() => setFrameOpen(false)} />}
       </div>
-      <div className="color-anchor">
+      <div className="color-anchor" ref={roleRef}>
         <button type="button" className={roleOpen ? 'btn active' : 'btn'} disabled={blocks.length === 0 && !groupsSelected} onClick={() => setRoleOpen((open) => !open)}>
           Rolle
         </button>
-        {roleOpen && <RoleMenu onClose={() => setRoleOpen(false)} />}
+        {roleOpen && <RoleMenu anchorRef={roleRef} onClose={() => setRoleOpen(false)} />}
       </div>
-      <div className="color-anchor">
+      <div className="color-anchor" ref={fontRef}>
         <button type="button" className={fontOpen ? 'btn active' : 'btn'} disabled={blocks.length === 0} onClick={() => setFontOpen((open) => !open)}>
           Skrift
         </button>
-        {fontOpen && <BlockFontMenu onClose={() => setFontOpen(false)} />}
+        {fontOpen && <BlockFontMenu anchorRef={fontRef} onClose={() => setFontOpen(false)} />}
       </div>
       <button type="button" className="btn" onClick={api.addComment}>
         Kommentar

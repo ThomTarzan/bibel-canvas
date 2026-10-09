@@ -1,26 +1,30 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useEditor } from '../state/EditorContext';
+import type { LineBreakSettings } from '../types';
+import { LineBreakOptions } from './LineBreakOptions';
 
 export function ImportDialog() {
   const { importOpen, setImportOpen, importText, project } = useEditor();
   const [reference, setReference] = useState(project.reference);
   const [text, setText] = useState('');
+  const [lineBreaks, setLineBreaks] = useState<LineBreakSettings>(project.lineBreaks);
   const areaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!importOpen) return;
     setReference(project.reference);
     setText('');
+    setLineBreaks(project.lineBreaks);
     const frame = window.requestAnimationFrame(() => areaRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [importOpen, project.reference]);
+  }, [importOpen, project.reference, project.lineBreaks]);
 
   if (!importOpen) return null;
 
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     if (!text.trim()) return;
-    importText(text, reference);
+    importText(text, reference, lineBreaks);
   };
 
   return (
@@ -28,7 +32,8 @@ export function ImportDialog() {
       <form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}>
         <h2>Importer tekst</h2>
         <p className="modal-lead">
-          Hvert ord blir en brikke i leserekkefølge. Linjeskift starter en ny rad. Tegnsetting følger ordet.
+          Hvert ord blir en brikke i leserekkefølge. Dine linjeskift starter en ny rad, og valgt tegnsetting kan bryte
+          lange linjer. Tegnsetting følger ordet.
         </p>
         <label className="field">
           <span>Referanse (valgfritt)</span>
@@ -51,6 +56,7 @@ export function ImportDialog() {
             }}
           />
         </label>
+        <LineBreakOptions value={lineBreaks} onChange={setLineBreaks} />
         {project.blocks.length > 0 && (
           <p className="modal-note">Dette erstatter det som ligger på lerretet. Du kan angre.</p>
         )}

@@ -130,6 +130,16 @@ export interface TypographySettings {
   fontWeight: number;
 }
 
+/** Which trailing punctuation starts a new row on import and reflow. */
+export interface LineBreakSettings {
+  period: boolean;
+  comma: boolean;
+  semicolon: boolean;
+  colon: boolean;
+  question: boolean;
+  exclamation: boolean;
+}
+
 export interface ExportPrefs {
   hideComments: boolean;
   hideGuides: boolean;
@@ -151,6 +161,10 @@ export interface Project {
   frames: Frame[];
   comments: Comment[];
   typography: TypographySettings;
+  /** Punctuation that starts a new row, in addition to the user's own line breaks. */
+  lineBreaks: LineBreakSettings;
+  /** Passage last imported, so lines can be reflowed without dropping arrows or groups. */
+  sourceText: string;
   exportPrefs: ExportPrefs;
   showRelationLegend: boolean;
   showFrameLegend: boolean;
