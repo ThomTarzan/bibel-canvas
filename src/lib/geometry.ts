@@ -22,8 +22,8 @@ export interface ArrowGeometry {
   labelY: number;
 }
 
-export function blockRect(x: number, y: number, width: number): Rect {
-  return { x, y, w: width, h: BLOCK_H };
+export function blockRect(x: number, y: number, width: number, height = BLOCK_H): Rect {
+  return { x, y, w: width, h: height };
 }
 
 export function boundsOf(rects: Rect[], pad: number): Rect | null {

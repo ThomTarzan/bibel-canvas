@@ -1,8 +1,10 @@
 import { ArrowPanel } from './components/ArrowPanel';
 import { CanvasView } from './components/CanvasView';
 import { ImportDialog } from './components/ImportDialog';
+import { Legends } from './components/Legends';
 import { SelectionBar } from './components/SelectionBar';
 import { Toast } from './components/Toast';
+import { ToolRail } from './components/ToolRail';
 import { TopBar } from './components/TopBar';
 import { EditorProvider, useEditor } from './state/EditorContext';
 
@@ -12,6 +14,8 @@ function Shell() {
     <div className="app">
       <CanvasView />
       <TopBar />
+      <ToolRail />
+      <Legends />
       <ArrowPanel />
       <SelectionBar />
       <Toast lifted={selection.length > 0} />

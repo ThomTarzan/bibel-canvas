@@ -11,13 +11,28 @@ import {
   type ReactNode,
   type SetStateAction,
 } from 'react';
+import { RELATIONS } from '../lib/catalog';
 import { downloadJson } from '../lib/files';
 import { projectFilename } from '../lib/filename';
 import { GRID } from '../lib/layout';
 import { blockIdsToMove } from '../lib/move';
 import { createId } from '../lib/ids';
+import { nextFrameColor } from '../lib/project';
 import { createEditorState, readStoredProject, reduce, type EditorState, type ToastState } from './editor';
-import type { Arrow, Project } from '../types';
+import type {
+  Arrow,
+  ArrowEnd,
+  ConnectorKind,
+  ExportPrefs,
+  FontFamilyId,
+  FrameStyle,
+  LogicRole,
+  Project,
+  RelationId,
+  TypographySettings,
+} from '../types';
+
+export type CanvasTool = 'select' | 'arrow' | 'connector';
 
 const STORAGE_KEY = 'bibel-canvas:v1';
 
@@ -31,16 +46,18 @@ export interface EditorApi {
   project: Project;
   viewport: Viewport;
   selection: string[];
-  tool: 'select' | 'arrow';
-  arrowFrom: string | null;
+  tool: CanvasTool;
+  relation: RelationId | null;
+  connectorKind: ConnectorKind;
   toast: ToastState | null;
   editingId: string | null;
   importOpen: boolean;
   canUndo: boolean;
   canRedo: boolean;
   setViewport: Dispatch<SetStateAction<Viewport>>;
-  setTool: (tool: 'select' | 'arrow') => void;
-  setArrowFrom: (id: string | null) => void;
+  setTool: (tool: CanvasTool) => void;
+  armRelation: (id: RelationId | null) => void;
+  armConnector: (kind: ConnectorKind) => void;
   setEditingId: (id: string | null) => void;
   setSelection: Dispatch<SetStateAction<string[]>>;
   setImportOpen: (open: boolean) => void;
@@ -60,8 +77,28 @@ export interface EditorApi {
   setTextColor: (color: string | null) => void;
   setGroupFill: (color: string | null) => void;
   setArrowColor: (color: string | null) => void;
-  addArrow: (fromId: string, toId: string) => void;
-  updateArrow: (id: string, patch: Partial<Pick<Arrow, 'label' | 'style' | 'color'>>) => void;
+  addDrawnArrow: (from: ArrowEnd, to: ArrowEnd, relation?: RelationId | null) => void;
+  addDrawnConnector: (from: ArrowEnd, to: ArrowEnd, kind?: ConnectorKind) => void;
+  updateArrow: (id: string, patch: Partial<Pick<Arrow, 'label' | 'style' | 'color' | 'relation' | 'from' | 'to'>>) => void;
+  updateConnectorEnd: (id: string, which: 'from' | 'to', end: ArrowEnd) => void;
+  addInnskutt: () => void;
+  toggleHovedpastand: () => void;
+  setRole: (role: LogicRole | null) => void;
+  setRoleHidden: (hidden: boolean) => void;
+  toggleRoleIcons: () => void;
+  toggleRelationLegend: () => void;
+  toggleFrameLegend: () => void;
+  toggleCommentsVisible: () => void;
+  addComment: () => void;
+  updateComment: (id: string, patch: Partial<{ text: string; minimized: boolean; x: number; y: number }>) => void;
+  setTypography: (patch: Partial<TypographySettings>) => void;
+  setBlockFont: (patch: { fontFamily?: FontFamilyId | null; fontSize?: number | null; fontWeight?: number | null }) => void;
+  applyFrame: (colorId: string, thickness: number, style: FrameStyle) => void;
+  clearFrames: () => void;
+  addFrameColor: () => void;
+  updateFrameColor: (id: string, patch: Partial<{ name: string; color: string }>) => void;
+  deleteFrameColor: (id: string) => void;
+  setExportPrefs: (patch: Partial<ExportPrefs>) => void;
   toggleGrid: () => void;
   toggleSnap: () => void;
   setReference: (reference: string) => void;
@@ -94,8 +131,9 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduce, undefined, loadInitial);
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [selection, setSelection] = useState<string[]>([]);
-  const [tool, setTool] = useState<'select' | 'arrow'>('select');
-  const [arrowFrom, setArrowFrom] = useState<string | null>(null);
+  const [tool, setTool] = useState<CanvasTool>('select');
+  const [relation, setRelation] = useState<RelationId | null>('årsak');
+  const [connectorKind, setConnectorKind] = useState<ConnectorKind>('apposisjon');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const canvasRef = useRef<HTMLElement | null>(null);
@@ -108,13 +146,15 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       ...project.blocks.map((block) => block.id),
       ...project.groups.map((group) => group.id),
       ...project.arrows.map((arrow) => arrow.id),
+      ...project.connectors.map((connector) => connector.id),
+      ...project.markers.map((marker) => marker.id),
+      ...project.comments.map((comment) => comment.id),
     ]);
     setSelection((current) => {
       const next = current.filter((id) => ids.has(id));
       return next.length === current.length ? current : next;
     });
-    if (arrowFrom && !ids.has(arrowFrom)) setArrowFrom(null);
-  }, [project, arrowFrom]);
+  }, [project]);
 
   useEffect(() => {
     if (editingId && !project.blocks.some((block) => block.id === editingId)) setEditingId(null);
@@ -203,23 +243,165 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     [project.arrows, selection],
   );
 
-  const addArrow = useCallback((fromId: string, toId: string) => {
-    const arrow: Arrow = { id: createId('p'), fromId, toId, label: '', style: 'straight', color: null };
+  const armRelation = useCallback((id: RelationId | null) => {
+    setRelation(id);
+    setTool((current) => (current === 'arrow' && relation === id ? 'select' : 'arrow'));
+  }, [relation]);
+
+  const armConnector = useCallback((kind: ConnectorKind) => {
+    setConnectorKind(kind);
+    setTool((current) => (current === 'connector' && connectorKind === kind ? 'select' : 'connector'));
+  }, [connectorKind]);
+
+  const addDrawnArrow = useCallback((from: ArrowEnd, to: ArrowEnd, usedRelation?: RelationId | null) => {
+    const arrow: Arrow = {
+      id: createId('p'),
+      fromId: from.targetId ?? '',
+      toId: to.targetId ?? '',
+      label: '',
+      style: 'straight',
+      color: null,
+      relation: usedRelation === undefined ? relation : usedRelation,
+      from,
+      to,
+    };
     dispatch({ type: 'add-arrow', arrow });
     setSelection([arrow.id]);
-    setArrowFrom(null);
-    setTool('select');
-  }, []);
+  }, [relation]);
 
-  const updateArrow = useCallback((id: string, patch: Partial<Pick<Arrow, 'label' | 'style' | 'color'>>) => {
+  const addDrawnConnector = useCallback((from: ArrowEnd, to: ArrowEnd, kind?: ConnectorKind) => {
+    const id = createId('k');
+    dispatch({
+      type: 'add-connector',
+      connector: { id, kind: kind ?? connectorKind, fromId: from.targetId ?? '', toId: to.targetId ?? '', from, to },
+    });
+    setSelection([id]);
+  }, [connectorKind]);
+
+  const updateArrow = useCallback((id: string, patch: Partial<Pick<Arrow, 'label' | 'style' | 'color' | 'relation' | 'from' | 'to'>>) => {
     dispatch({ type: 'update-arrow', id, patch });
   }, []);
+
+  const updateConnectorEnd = useCallback((id: string, which: 'from' | 'to', end: ArrowEnd) => {
+    dispatch({ type: 'update-connector', id, patch: { [which]: end } });
+  }, []);
+
+  const markerTargets = useCallback(() => {
+    const ids: string[] = [];
+    for (const id of selection) {
+      if (project.blocks.some((block) => block.id === id) || project.groups.some((group) => group.id === id)) ids.push(id);
+    }
+    return ids;
+  }, [project.blocks, project.groups, selection]);
+
+  const addInnskutt = useCallback(() => {
+    const targetIds = markerTargets();
+    if (targetIds.length === 0) {
+      dispatch({ type: 'set-toast', toast: { message: 'Velg ord, en frase eller en gruppe først.', offerUndo: false } });
+      return;
+    }
+    const id = createId('m');
+    dispatch({ type: 'add-marker', marker: { id, kind: 'innskutt', targetIds } });
+    setSelection([id]);
+  }, [markerTargets]);
+
+  const toggleHovedpastand = useCallback(() => {
+    const targetIds = markerTargets();
+    if (targetIds.length === 0) {
+      dispatch({ type: 'set-toast', toast: { message: 'Velg et ord eller en gruppe først.', offerUndo: false } });
+      return;
+    }
+    dispatch({ type: 'toggle-hovedpastand', targetIds });
+  }, [markerTargets]);
+
+  const roleBlockIds = useCallback(() => {
+    const ids = new Set(selectedBlocks.map((block) => block.id));
+    for (const groupId of selectedGroupIds) {
+      project.groups.find((group) => group.id === groupId)?.blockIds.forEach((id) => ids.add(id));
+    }
+    return [...ids];
+  }, [project.groups, selectedBlocks, selectedGroupIds]);
+
+  const setRole = useCallback((role: LogicRole | null) => {
+    const blockIds = roleBlockIds();
+    if (blockIds.length) dispatch({ type: 'set-role', blockIds, role });
+  }, [roleBlockIds]);
+
+  const setRoleHidden = useCallback((hidden: boolean) => {
+    const blockIds = roleBlockIds();
+    if (blockIds.length) dispatch({ type: 'set-role-hidden', blockIds, hidden });
+  }, [roleBlockIds]);
+
+  const addComment = useCallback(() => {
+    const block = project.blocks.find((item) => selection.includes(item.id));
+    const group = project.groups.find((item) => selection.includes(item.id));
+    const arrow = project.arrows.find((item) => selection.includes(item.id));
+    const connector = project.connectors.find((item) => selection.includes(item.id));
+    const targetId = block?.id ?? group?.id ?? arrow?.id ?? connector?.id;
+    if (!targetId) {
+      dispatch({ type: 'set-toast', toast: { message: 'Velg et ord, en gruppe eller en pil først.', offerUndo: false } });
+      return;
+    }
+    if (!project.showComments) dispatch({ type: 'toggle-comments-visible' });
+    dispatch({
+      type: 'add-comment',
+      comment: { id: createId('c'), targetId, x: 12, y: -6, text: '', minimized: false, anchored: true },
+    });
+  }, [project.arrows, project.blocks, project.connectors, project.groups, project.showComments, selection]);
+
+  const updateComment = useCallback((id: string, patch: Partial<{ text: string; minimized: boolean; x: number; y: number }>) => {
+    dispatch({ type: 'update-comment', id, patch });
+  }, []);
+
+  const setTypography = useCallback((patch: Partial<TypographySettings>) => {
+    dispatch({ type: 'set-typography', patch });
+  }, []);
+
+  const setBlockFont = useCallback((patch: { fontFamily?: FontFamilyId | null; fontSize?: number | null; fontWeight?: number | null }) => {
+    const blockIds = selectedBlocks.map((block) => block.id);
+    if (blockIds.length) dispatch({ type: 'set-block-font', blockIds, patch });
+  }, [selectedBlocks]);
+
+  const applyFrame = useCallback((colorId: string, thickness: number, style: FrameStyle) => {
+    const targetIds = markerTargets();
+    if (targetIds.length) dispatch({ type: 'set-frames', targetIds, colorId, thickness, style });
+  }, [markerTargets]);
+
+  const clearFrames = useCallback(() => {
+    const targetIds = markerTargets();
+    if (targetIds.length) dispatch({ type: 'clear-frames', targetIds });
+  }, [markerTargets]);
+
+  const addFrameColor = useCallback(() => {
+    dispatch({
+      type: 'add-frame-color',
+      id: createId('ramme'),
+      color: nextFrameColor(project.frameColors),
+      name: '',
+    });
+  }, [project.frameColors]);
+
+  const updateFrameColor = useCallback((id: string, patch: Partial<{ name: string; color: string }>) => {
+    dispatch({ type: 'update-frame-color', id, patch });
+  }, []);
+
+  const deleteFrameColor = useCallback((id: string) => {
+    dispatch({ type: 'delete-frame-color', id });
+  }, []);
+
+  const setExportPrefs = useCallback((patch: Partial<ExportPrefs>) => {
+    dispatch({ type: 'set-export-prefs', patch });
+  }, []);
+
+  const toggleRoleIcons = useCallback(() => dispatch({ type: 'toggle-role-icons' }), []);
+  const toggleRelationLegend = useCallback(() => dispatch({ type: 'toggle-relation-legend' }), []);
+  const toggleFrameLegend = useCallback(() => dispatch({ type: 'toggle-frame-legend' }), []);
+  const toggleCommentsVisible = useCallback(() => dispatch({ type: 'toggle-comments-visible' }), []);
 
   const importText = useCallback((text: string, reference: string) => {
     dispatch({ type: 'import-text', text, reference });
     setSelection([]);
     setTool('select');
-    setArrowFrom(null);
     setEditingId(null);
     setViewport({ x: 0, y: 0, zoom: 1 });
     setImportOpen(false);
@@ -229,7 +411,6 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'load', project: next });
     setSelection([]);
     setTool('select');
-    setArrowFrom(null);
     setEditingId(null);
     setViewport({ x: 0, y: 0, zoom: 1 });
   }, []);
@@ -272,7 +453,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       viewport,
       selection,
       tool,
-      arrowFrom,
+      relation,
+      connectorKind,
       toast: state.toast,
       editingId,
       importOpen,
@@ -280,7 +462,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       canRedo: state.future.length > 0,
       setViewport,
       setTool,
-      setArrowFrom,
+      armRelation,
+      armConnector,
       setEditingId,
       setSelection,
       setImportOpen,
@@ -300,8 +483,28 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       setTextColor: applyTextColor,
       setGroupFill: applyGroupFill,
       setArrowColor: applyArrowColor,
-      addArrow,
+      addDrawnArrow,
+      addDrawnConnector,
       updateArrow,
+      updateConnectorEnd,
+      addInnskutt,
+      toggleHovedpastand,
+      setRole,
+      setRoleHidden,
+      toggleRoleIcons,
+      toggleRelationLegend,
+      toggleFrameLegend,
+      toggleCommentsVisible,
+      addComment,
+      updateComment,
+      setTypography,
+      setBlockFont,
+      applyFrame,
+      clearFrames,
+      addFrameColor,
+      updateFrameColor,
+      deleteFrameColor,
+      setExportPrefs,
       toggleGrid,
       toggleSnap,
       setReference,
@@ -318,7 +521,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       viewport,
       selection,
       tool,
-      arrowFrom,
+      relation,
+      connectorKind,
       state.toast,
       state.past.length,
       state.future.length,
@@ -340,8 +544,30 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       applyTextColor,
       applyGroupFill,
       applyArrowColor,
-      addArrow,
+      addDrawnArrow,
+      addDrawnConnector,
       updateArrow,
+      updateConnectorEnd,
+      addInnskutt,
+      toggleHovedpastand,
+      setRole,
+      setRoleHidden,
+      toggleRoleIcons,
+      toggleRelationLegend,
+      toggleFrameLegend,
+      toggleCommentsVisible,
+      addComment,
+      updateComment,
+      setTypography,
+      setBlockFont,
+      applyFrame,
+      clearFrames,
+      addFrameColor,
+      updateFrameColor,
+      deleteFrameColor,
+      setExportPrefs,
+      armRelation,
+      armConnector,
       toggleGrid,
       toggleSnap,
       setReference,
@@ -396,12 +622,19 @@ export function EditorProvider({ children }: { children: ReactNode }) {
           current.setEditingId(null);
           return;
         }
-        if (current.arrowFrom || current.tool === 'arrow') {
-          current.setArrowFrom(null);
+        if (current.tool !== 'select') {
           current.setTool('select');
           return;
         }
         if (current.selection.length) current.setSelection([]);
+        return;
+      }
+      if (!mod && /^[1-8]$/.test(event.key)) {
+        const next = RELATIONS[Number(event.key) - 1];
+        const only = current.selection.length === 1 ? current.selection[0] : null;
+        const arrow = only ? current.project.arrows.find((item) => item.id === only) : undefined;
+        if (arrow) current.updateArrow(arrow.id, { relation: next.id });
+        else current.armRelation(next.id);
         return;
       }
       if (event.key === 'Delete' || event.key === 'Backspace') {

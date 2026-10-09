@@ -26,15 +26,20 @@ Vite bruker base `/bibel-canvas/`, så stil og skript lastes under den stien.
 
 ## Prosjektfil
 
-Lagre og åpne er lokal JSON. Filnavnet kommer fra referanse og dato, for eksempel `Rom-8-1-4_2026-10-08.json`. Arbeidet lagres også automatisk i nettleserens localStorage.
+Lagre og åpne er lokal JSON. Filnavnet kommer fra referanse og dato, for eksempel `Rom-8-1-4_2026-10-08.json`. PNG og SVG bruker samme navn. Arbeidet lagres også automatisk i nettleserens localStorage.
 
-Filen har felter klare for runde 2, uten brukergrensesnitt for dem ennå:
+Filer fra runde 1 (`version: 1`) åpnes fortsatt. De blir til versjon 2 i minnet, med de gamle pilene festet til de samme brikkene.
 
-- logikkrolle på brikke (`role`, `roleHidden`): hovedpåstand, grunn, følge, formål, motsetning, forklaring, sitat, spørsmål
-- kommentarer (`comments`, med `minimized`)
-- skrift globalt og per brikke (`typography`, `fontFamily`, `fontSize`, `fontWeight`) — familiene `elegant` og `neutral`
-- eksportvalg (`exportPrefs.hideComments`, `exportPrefs.hideGuides`)
+## Relasjoner, symboler og rammer
+
+Åtte relasjoner tegnes som store omrisspiler: årsak, hensikt, resultat, betingelse, innsømmelse, tid, sammenligning og middel. Tast 1–8 velger relasjon. Middel betyr middel eller ledsagende omstendighet. Fri tekst finnes i tillegg.
+
+Pilen kan dras fritt på lerretet. Slippes enden nær et ord, en frase eller en gruppe, fester den seg og følger med. Ellers blir den liggende. Endene kan flyttes etterpå, og relasjonen kan byttes uten å tegne på nytt.
+
+Symboler: apposisjon (=), motsetning (≠), tillegg (+), konklusjon (∴), innskutt (stiplet ramme rundt utvalget) og hovedpåstand (tykk markering). Rolleikon kan skjules samlet.
+
+Rammer har sterk farge, tykkelse og heltrukken eller stiplet strek. Navnene, for eksempel subjekt, verb og gjentakelse, er bare forslag. De kan endres og slettes, og ligger i prosjektfilen.
 
 ## Avgrensning
 
-Kun latinsk skrift (norsk og engelsk). Gresk og hebraisk er ikke støttet. Overskrifter fra nettbibler fjernes ikke automatisk.
+Kun latinsk skrift (norsk og engelsk). Gresk og hebraisk er ikke støttet. Overskrifter fra nettbibler fjernes ikke automatisk. Eldre piler som var buet eller stiplet, tegnes som de nye omrisspilene. Stilen blir liggende i filen.

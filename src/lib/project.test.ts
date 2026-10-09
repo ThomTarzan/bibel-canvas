@@ -14,7 +14,7 @@ describe('parseProject', () => {
   it('bevarer reserverte felt for ikon, kommentar og skrift', () => {
     const project = emptyProject('2026-10-08T00:00:00.000Z');
     project.reference = 'Rom 8,1–4';
-    project.comments = [{ id: 'c1', targetId: null, x: 1, y: 2, text: 'Notat', minimized: true }];
+    project.comments = [{ id: 'c1', targetId: null, x: 1, y: 2, text: 'Notat', minimized: true, anchored: false }];
     project.exportPrefs = { hideComments: true, hideGuides: false };
     project.typography = { fontFamily: 'neutral', fontSize: 19, fontWeight: 600 };
     const block = makeBlock({ text: 'Nåde', x: 10, y: 20, kind: 'word', uncertain: false });
@@ -40,7 +40,42 @@ describe('parseProject', () => {
 
   it('avviser ukjent form', () => {
     expect(parseProject(null)).toBeNull();
-    expect(parseProject({ version: 2, blocks: [] })).toBeNull();
+    expect(parseProject({ version: 3, blocks: [] })).toBeNull();
+  });
+
+  it('åpner en versjon 1-fil og flytter den til versjon 2', () => {
+    const parsed = parseProject({
+      version: 1,
+      reference: 'Rom 8,1–4',
+      blocks: [
+        { id: 'b1', text: 'Så', x: 0, y: 0, kind: 'word' },
+        { id: 'b2', text: 'er', x: 48, y: 0, kind: 'word' },
+      ],
+      arrows: [{ id: 'p1', fromId: 'b1', toId: 'b2', label: 'Grunn', style: 'curved', color: '#3f4f42' }],
+      comments: [{ id: 'c1', targetId: null, x: 4, y: 8, text: 'Notat', minimized: false }],
+    });
+    expect(parsed?.version).toBe(2);
+    expect(parsed?.arrows[0]).toMatchObject({
+      fromId: 'b1',
+      toId: 'b2',
+      label: 'Grunn',
+      style: 'curved',
+      relation: null,
+      from: { targetId: 'b1', edge: true },
+      to: { targetId: 'b2', edge: true },
+    });
+    expect(parsed?.comments[0]).toMatchObject({ text: 'Notat', anchored: false });
+    expect(parsed?.frameColors.map((entry) => entry.name)).toEqual(['subjekt', 'verb', 'gjentakelse']);
+  });
+
+  it('beholder en tom rammeforklaring når den er lagret slik', () => {
+    const project = emptyProject('2026-10-08T00:00:00.000Z');
+    project.frameColors = [];
+    project.showFrameLegend = false;
+    const parsed = parseProject(JSON.parse(JSON.stringify(project)));
+    expect(parsed?.frameColors).toEqual([]);
+    expect(parsed?.showFrameLegend).toBe(false);
+    expect(parsed?.version).toBe(2);
   });
 });
 
