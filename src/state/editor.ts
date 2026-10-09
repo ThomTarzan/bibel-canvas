@@ -4,6 +4,7 @@ import { createId } from '../lib/ids';
 import { layoutAnalysis, WORD_GAP } from '../lib/layout';
 import { measureTextWidth } from '../lib/measure';
 import { clampFontSize, emptyProject, makeBlock, mirrorEndIds, parseProject, syncProject } from '../lib/project';
+import { reflowBlocks } from '../lib/reflow';
 import { detachEnds, retargetEnds } from '../lib/scene';
 import { tokenizeLine } from '../lib/tokenize';
 import type {
@@ -15,6 +16,7 @@ import type {
   ExportPrefs,
   FontFamilyId,
   FrameStyle,
+  LineBreakSettings,
   LogicRole,
   Marker,
   Project,
@@ -34,7 +36,9 @@ export interface EditorState {
 }
 
 export type EditorAction =
-  | { type: 'import-text'; text: string; reference: string; now?: string }
+  | { type: 'import-text'; text: string; reference: string; now?: string; lineBreaks?: LineBreakSettings }
+  | { type: 'set-line-breaks'; lineBreaks: LineBreakSettings }
+  | { type: 'reflow-lines' }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'delete-ids'; ids: string[] }
@@ -170,12 +174,17 @@ export function reduce(state: EditorState, action: EditorAction): EditorState {
     case 'import-text': {
       if (!action.text.trim()) return state;
       const now = action.now ?? new Date().toISOString();
+      const lineBreaks = action.lineBreaks ?? state.project.lineBreaks;
       const analysis = analyzeText(action.text);
       const layout = (includeVerseNumbers: boolean) =>
-        layoutAnalysis(analysis, { includeVerseNumbers, measure: measureTextWidth }).map((draft) => makeBlock(draft));
+        layoutAnalysis(analysis, { includeVerseNumbers, measure: measureTextWidth, lineBreaks }).map((draft) =>
+          makeBlock(draft),
+        );
       const base: Project = {
         ...state.project,
         reference: action.reference.trim(),
+        lineBreaks,
+        sourceText: action.text,
         createdAt: state.project.blocks.length === 0 ? now : state.project.createdAt,
         updatedAt: now,
         blocks: [],
@@ -569,6 +578,35 @@ export function reduce(state: EditorState, action: EditorAction): EditorState {
     case 'set-reference':
       if (state.project.reference === action.reference) return state;
       return commit(state, { ...state.project, reference: action.reference });
+    case 'set-line-breaks': {
+      const current = state.project.lineBreaks;
+      const next = action.lineBreaks;
+      if (
+        current.period === next.period &&
+        current.comma === next.comma &&
+        current.semicolon === next.semicolon &&
+        current.colon === next.colon &&
+        current.question === next.question &&
+        current.exclamation === next.exclamation
+      ) {
+        return state;
+      }
+      return commit(state, { ...state.project, lineBreaks: next });
+    }
+    case 'reflow-lines': {
+      const result = reflowBlocks(state.project, measureTextWidth);
+      if (result.status === 'edited') {
+        return {
+          ...state,
+          toast: {
+            message: 'Teksten er endret siden import, så linjene ble ikke flyttet.',
+            offerUndo: false,
+          },
+        };
+      }
+      if (result.status !== 'ok') return state;
+      return commit(state, { ...state.project, blocks: result.blocks });
+    }
     case 'load':
       return commit(state, action.project, null);
     default:

@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { resolveEnd } from '../lib/snap';
 import { blockRect } from '../lib/geometry';
+import { BLOCK_H, ROW_GAP } from '../lib/layout';
+import { DEFAULT_LINE_BREAKS } from '../lib/lineBreaks';
+import { emptyProject, makeBlock } from '../lib/project';
+import type { LineBreakSettings } from '../types';
 import { createEditorState, reduce } from './editor';
+
+const NO_BREAKS: LineBreakSettings = {
+  period: false,
+  comma: false,
+  semicolon: false,
+  colon: false,
+  question: false,
+  exclamation: false,
+};
 
 const ROM_GLUED = `1Så er det da ingen fordømmelse for dem som er i Kristus Jesus.
 2For Åndens lov, som gir liv, har i Kristus Jesus frigjort deg.
@@ -224,6 +237,97 @@ describe('runde 2', () => {
     expect(state.project.typography).toMatchObject({ fontFamily: 'neutral', fontSize: 20, fontWeight: 600 });
     expect(state.project.blocks.find((block) => block.id === alfa.id)).toMatchObject({ fontFamily: 'elegant', fontSize: 24 });
     expect(state.project.blocks.find((block) => block.id === beta.id)?.fontFamily).toBeNull();
+  });
+
+  it('bryter importerte linjer på tegn og kan bryte dem på nytt uten å miste pil, gruppe eller ramme', () => {
+    let state = reduce(createEditorState(), {
+      type: 'import-text',
+      text: 'Alfa beta, gamma delta.',
+      reference: 'Rom 8,1–4',
+      now: NOW,
+      lineBreaks: NO_BREAKS,
+    });
+    expect(state.project.sourceText).toBe('Alfa beta, gamma delta.');
+    expect(new Set(state.project.blocks.map((block) => block.y)).size).toBe(1);
+
+    const [alfa, beta, gamma] = state.project.blocks;
+    state = reduce(state, { type: 'set-fill', blockIds: [alfa.id], color: '#e23d8c' });
+    state = reduce(state, { type: 'group', blockIds: [alfa.id, beta.id] });
+    const groupId = state.project.groups[0]?.id;
+    state = reduce(state, {
+      type: 'add-arrow',
+      arrow: {
+        id: 'p-linje',
+        fromId: alfa.id,
+        toId: gamma.id,
+        label: '',
+        style: 'straight',
+        color: null,
+        relation: 'årsak',
+        from: { x: 0, y: 0, targetId: alfa.id, edge: true },
+        to: { x: 0, y: 0, targetId: gamma.id, edge: true },
+      },
+    });
+    const color = state.project.frameColors[0];
+    state = reduce(state, {
+      type: 'set-frames',
+      targetIds: [gamma.id],
+      colorId: color.id,
+      thickness: 3,
+      style: 'solid',
+    });
+
+    state = reduce(state, { type: 'set-line-breaks', lineBreaks: { ...DEFAULT_LINE_BREAKS, period: true, comma: true } });
+    state = reduce(state, { type: 'reflow-lines' });
+
+    const movedGamma = state.project.blocks.find((block) => block.id === gamma.id);
+    const movedBeta = state.project.blocks.find((block) => block.id === beta.id);
+    expect(movedBeta?.y).toBe(alfa.y);
+    expect(movedGamma?.y).toBe(alfa.y + BLOCK_H + ROW_GAP);
+    expect(state.project.blocks.find((block) => block.id === alfa.id)?.fill).toBe('#e23d8c');
+    expect(state.project.blocks.find((block) => block.id === alfa.id)?.groupId).toBe(groupId);
+    expect(state.project.groups[0]?.blockIds).toEqual([alfa.id, beta.id]);
+    expect(state.project.arrows[0]).toMatchObject({ fromId: alfa.id, toId: gamma.id, relation: 'årsak' });
+    expect(state.project.frames[0]?.targetId).toBe(gamma.id);
+
+    state = reduce(state, { type: 'set-line-breaks', lineBreaks: NO_BREAKS });
+    state = reduce(state, { type: 'reflow-lines' });
+    expect(new Set(state.project.blocks.map((block) => block.y)).size).toBe(1);
+    expect(state.project.arrows[0]?.toId).toBe(gamma.id);
+    expect(state.project.frames).toHaveLength(1);
+  });
+
+  it('bryter rader som allerede ligger på lerretet når kildeteksten mangler', () => {
+    const project = emptyProject(NOW);
+    project.sourceText = '';
+    project.blocks = [
+      makeBlock({ text: 'Alfa', x: 10, y: 40, kind: 'word', uncertain: false }),
+      makeBlock({ text: 'beta,', x: 80, y: 40, kind: 'word', uncertain: false }),
+      makeBlock({ text: 'gamma', x: 160, y: 40, kind: 'word', uncertain: false }),
+    ];
+    const ids = project.blocks.map((block) => block.id);
+    const state = reduce(createEditorState(project), { type: 'reflow-lines' });
+    const [alfa, beta, gamma] = state.project.blocks;
+    expect(state.project.blocks.map((block) => block.id)).toEqual(ids);
+    expect(alfa.y).toBe(40);
+    expect(beta.y).toBe(40);
+    expect(gamma.y).toBe(40 + BLOCK_H + ROW_GAP);
+    expect(beta.text).toBe('beta,');
+  });
+
+  it('lar være å flytte ord når teksten er endret etter import', () => {
+    let state = reduce(createEditorState(), {
+      type: 'import-text',
+      text: 'Alfa beta, gamma',
+      reference: 'Test',
+      now: NOW,
+    });
+    const gamma = state.project.blocks.find((block) => block.text === 'gamma');
+    const yBefore = gamma?.y;
+    state = reduce(state, { type: 'set-text', id: gamma!.id, text: 'annet' });
+    state = reduce(state, { type: 'reflow-lines' });
+    expect(state.toast?.message).toMatch(/endret/);
+    expect(state.project.blocks.find((block) => block.id === gamma!.id)?.y).toBe(yBefore);
   });
 
   it('legger symbol og rolle på utvalget', () => {

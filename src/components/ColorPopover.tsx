@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState, type RefObject } from 'react';
 import { ARROW_OUTLINE, ARROW_OUTLINE_CHOICES, FILL_COLORS, INK_COLORS } from '../lib/colors';
+import type { PopoverPrefer } from '../lib/placePopover';
 import { useEditor } from '../state/EditorContext';
+import { Popover } from './Popover';
 
 type Target = 'fill' | 'text' | 'group' | 'arrow';
 
@@ -13,15 +15,20 @@ const TARGETS: { id: Target; label: string }[] = [
 
 export function ColorPopover({
   onClose,
-  fixed,
+  anchorRef,
+  anchorElement = null,
+  prefer = 'below',
   word = false,
+  watch,
 }: {
   onClose: () => void;
-  fixed?: { left: number; top: number };
+  anchorRef?: RefObject<HTMLElement | null>;
+  anchorElement?: HTMLElement | null;
+  prefer?: PopoverPrefer;
   word?: boolean;
+  watch?: unknown;
 }) {
   const { project, selection, setFill, setTextColor, setGroupFill, setArrowColor } = useEditor();
-  const ref = useRef<HTMLDivElement>(null);
   const blockIds = selection.filter((id) => project.blocks.some((block) => block.id === id));
   const blocks = project.blocks.filter((block) => blockIds.includes(block.id));
   const groupIds = new Set(selection.filter((id) => project.groups.some((group) => group.id === id)));
@@ -37,14 +44,6 @@ export function ColorPopover({
   });
   const [target, setTarget] = useState<Target>(available[0]?.id ?? 'fill');
   const active = available.some((item) => item.id === target) ? target : available[0]?.id;
-
-  useEffect(() => {
-    const onPointer = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    };
-    window.addEventListener('pointerdown', onPointer);
-    return () => window.removeEventListener('pointerdown', onPointer);
-  }, [onClose]);
 
   if (!active) return null;
 
@@ -67,11 +66,12 @@ export function ColorPopover({
   };
 
   return (
-    <div
-      className={fixed ? 'popover popover-fixed' : 'popover'}
-      style={fixed ? { left: fixed.left, top: fixed.top } : undefined}
-      ref={ref}
-      onPointerDown={(event) => event.stopPropagation()}
+    <Popover
+      prefer={prefer}
+      anchorRef={anchorRef}
+      anchorElement={anchorElement}
+      onClose={onClose}
+      watch={watch}
     >
       <div className="segment">
         {available.map((item) => (
@@ -113,6 +113,6 @@ export function ColorPopover({
           onBlur={(event) => apply(event.target.value)}
         />
       </label>
-    </div>
+    </Popover>
   );
 }

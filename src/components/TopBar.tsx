@@ -4,13 +4,17 @@ import { projectFilename } from '../lib/filename';
 import { parseProject } from '../lib/project';
 import { useEditor } from '../state/EditorContext';
 import { IconMinus, IconPlus, IconRedo, IconUndo } from './icons';
-import { ExportMenu, GlobalFontMenu, ViewMenu } from './menus';
+import { ExportMenu, GlobalFontMenu, SettingsMenu, ViewMenu } from './menus';
 
 export function TopBar() {
   const api = useEditor();
   const fileRef = useRef<HTMLInputElement>(null);
+  const fontRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
   const [reference, setReference] = useState(api.project.reference);
-  const [menu, setMenu] = useState<'font' | 'view' | 'export' | null>(null);
+  const [menu, setMenu] = useState<'font' | 'view' | 'settings' | 'export' | null>(null);
   const hasNumbers = api.project.blocks.some((block) => block.kind === 'number');
 
   useEffect(() => setReference(api.project.reference), [api.project.reference]);
@@ -82,23 +86,33 @@ export function TopBar() {
           <IconPlus />
         </button>
         <span className="divider" />
-        <div className="color-anchor">
+        <div className="color-anchor" ref={fontRef}>
           <button type="button" className={menu === 'font' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'font' ? null : 'font')}>
             Skrift
           </button>
-          {menu === 'font' && <GlobalFontMenu onClose={() => setMenu(null)} />}
+          {menu === 'font' && <GlobalFontMenu anchorRef={fontRef} onClose={() => setMenu(null)} />}
         </div>
-        <div className="color-anchor">
+        <div className="color-anchor" ref={viewRef}>
           <button type="button" className={menu === 'view' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'view' ? null : 'view')}>
             Vis
           </button>
-          {menu === 'view' && <ViewMenu onClose={() => setMenu(null)} />}
+          {menu === 'view' && <ViewMenu anchorRef={viewRef} onClose={() => setMenu(null)} />}
         </div>
-        <div className="color-anchor">
+        <div className="color-anchor" ref={settingsRef}>
+          <button
+            type="button"
+            className={menu === 'settings' ? 'btn active' : 'btn'}
+            onClick={() => setMenu(menu === 'settings' ? null : 'settings')}
+          >
+            Innstillinger
+          </button>
+          {menu === 'settings' && <SettingsMenu anchorRef={settingsRef} onClose={() => setMenu(null)} />}
+        </div>
+        <div className="color-anchor" ref={exportRef}>
           <button type="button" className={menu === 'export' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'export' ? null : 'export')}>
             Eksporter
           </button>
-          {menu === 'export' && <ExportMenu onClose={() => setMenu(null)} />}
+          {menu === 'export' && <ExportMenu anchorRef={exportRef} onClose={() => setMenu(null)} />}
         </div>
         <button type="button" className="btn" disabled={!hasNumbers} onClick={api.deleteAllNumbers}>
           Slett alle tall

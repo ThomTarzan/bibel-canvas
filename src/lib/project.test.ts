@@ -36,6 +36,8 @@ describe('parseProject', () => {
     });
     expect(parsed?.typography).toEqual({ fontFamily: 'neutral', fontSize: 19, fontWeight: 600 });
     expect(parsed?.exportPrefs.hideComments).toBe(true);
+    expect(parsed?.lineBreaks).toEqual(project.lineBreaks);
+    expect(parsed?.sourceText).toBe('');
   });
 
   it('avviser ukjent form', () => {
@@ -66,6 +68,8 @@ describe('parseProject', () => {
     });
     expect(parsed?.comments[0]).toMatchObject({ text: 'Notat', anchored: false });
     expect(parsed?.frameColors.map((entry) => entry.name)).toEqual(['subjekt', 'verb', 'gjentakelse']);
+    expect(parsed?.lineBreaks).toMatchObject({ period: true, comma: true });
+    expect(parsed?.sourceText).toBe('');
   });
 
   it('beholder en tom rammeforklaring når den er lagret slik', () => {

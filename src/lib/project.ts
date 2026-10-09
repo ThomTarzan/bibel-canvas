@@ -2,6 +2,7 @@ import { EXTRA_FRAME_COLORS, FRAME_PRESETS } from './colors';
 import { RELATIONS } from './catalog';
 import { createId } from './ids';
 import type { DraftBlock } from './layout';
+import { DEFAULT_LINE_BREAKS, normalizeLineBreaks } from './lineBreaks';
 import type {
   Arrow,
   ArrowEnd,
@@ -67,6 +68,8 @@ export function emptyProject(now = new Date().toISOString()): Project {
     frames: [],
     comments: [],
     typography: { fontFamily: 'elegant', fontSize: 17, fontWeight: 400 },
+    lineBreaks: { ...DEFAULT_LINE_BREAKS },
+    sourceText: '',
     exportPrefs: { hideComments: false, hideGuides: false },
     showRelationLegend: true,
     showFrameLegend: true,
@@ -363,6 +366,8 @@ export function parseProject(value: unknown): Project | null {
   project.grid = value.grid !== false;
   project.snap = value.snap === true;
   project.typography = normalizeTypography(value.typography);
+  project.lineBreaks = normalizeLineBreaks(value.lineBreaks);
+  project.sourceText = typeof value.sourceText === 'string' ? value.sourceText : '';
   project.exportPrefs = normalizeExport(value.exportPrefs);
   project.showRelationLegend = value.showRelationLegend !== false;
   project.showFrameLegend = value.showFrameLegend !== false;

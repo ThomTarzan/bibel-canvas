@@ -1,4 +1,6 @@
 import type { Analysis } from './classify';
+import { DEFAULT_LINE_BREAKS, splitTokenLines } from './lineBreaks';
+import type { LineBreakSettings } from '../types';
 
 export const GRID = 24;
 export const BLOCK_H = 34;
@@ -30,9 +32,14 @@ export function estimateWidth(text: string): number {
 
 export function layoutAnalysis(
   analysis: Analysis,
-  options: { includeVerseNumbers: boolean; measure?: (text: string) => number },
+  options: {
+    includeVerseNumbers: boolean;
+    measure?: (text: string) => number;
+    lineBreaks?: LineBreakSettings;
+  },
 ): DraftBlock[] {
   const measure = options.measure ?? estimateWidth;
+  const lineBreaks = options.lineBreaks ?? DEFAULT_LINE_BREAKS;
   const blocks: DraftBlock[] = [];
   let y = START_Y;
 
@@ -42,18 +49,20 @@ export function layoutAnalysis(
       y += ROW_GAP;
       continue;
     }
-    let x = START_X;
-    for (const token of tokens) {
-      blocks.push({
-        text: token.text,
-        x,
-        y,
-        kind: token.role === 'word' ? 'word' : 'number',
-        uncertain: token.role === 'uncertain-number',
-      });
-      x += measure(token.text) + WORD_GAP;
+    for (const line of splitTokenLines(tokens, lineBreaks)) {
+      let x = START_X;
+      for (const token of line) {
+        blocks.push({
+          text: token.text,
+          x,
+          y,
+          kind: token.role === 'word' ? 'word' : 'number',
+          uncertain: token.role === 'uncertain-number',
+        });
+        x += measure(token.text) + WORD_GAP;
+      }
+      y += BLOCK_H + ROW_GAP;
     }
-    y += BLOCK_H + ROW_GAP;
   }
 
   return blocks;

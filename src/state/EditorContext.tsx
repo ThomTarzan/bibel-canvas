@@ -26,6 +26,7 @@ import type {
   ExportPrefs,
   FontFamilyId,
   FrameStyle,
+  LineBreakSettings,
   LogicRole,
   Project,
   RelationId,
@@ -61,7 +62,9 @@ export interface EditorApi {
   setEditingId: (id: string | null) => void;
   setSelection: Dispatch<SetStateAction<string[]>>;
   setImportOpen: (open: boolean) => void;
-  importText: (text: string, reference: string) => void;
+  importText: (text: string, reference: string, lineBreaks?: LineBreakSettings) => void;
+  setLineBreaks: (lineBreaks: LineBreakSettings) => void;
+  reflowLines: () => void;
   undo: () => void;
   redo: () => void;
   deleteIds: (ids: string[]) => void;
@@ -398,14 +401,18 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const toggleFrameLegend = useCallback(() => dispatch({ type: 'toggle-frame-legend' }), []);
   const toggleCommentsVisible = useCallback(() => dispatch({ type: 'toggle-comments-visible' }), []);
 
-  const importText = useCallback((text: string, reference: string) => {
-    dispatch({ type: 'import-text', text, reference });
+  const importText = useCallback((text: string, reference: string, lineBreaks?: LineBreakSettings) => {
+    dispatch({ type: 'import-text', text, reference, lineBreaks });
     setSelection([]);
     setTool('select');
     setEditingId(null);
     setViewport({ x: 0, y: 0, zoom: 1 });
     setImportOpen(false);
   }, []);
+  const setLineBreaks = useCallback((lineBreaks: LineBreakSettings) => {
+    dispatch({ type: 'set-line-breaks', lineBreaks });
+  }, []);
+  const reflowLines = useCallback(() => dispatch({ type: 'reflow-lines' }), []);
 
   const loadProject = useCallback((next: Project) => {
     dispatch({ type: 'load', project: next });
@@ -468,6 +475,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       setSelection,
       setImportOpen,
       importText,
+      setLineBreaks,
+      reflowLines,
       undo,
       redo,
       deleteIds,
@@ -529,6 +538,8 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       editingId,
       importOpen,
       importText,
+      setLineBreaks,
+      reflowLines,
       undo,
       redo,
       deleteIds,

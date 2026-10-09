@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeText } from './classify';
 import { BLOCK_H, ROW_GAP, START_Y, layoutAnalysis } from './layout';
+import type { LineBreakSettings } from '../types';
+
+const NO_BREAKS: LineBreakSettings = {
+  period: false,
+  comma: false,
+  semicolon: false,
+  colon: false,
+  question: false,
+  exclamation: false,
+};
 
 const GLUED = `1Så er det nåde.
 2For loven er ånd.`;
@@ -24,5 +34,21 @@ describe('layoutAnalysis', () => {
     expect(all[0]?.kind).toBe('number');
     expect(all[1]?.text).toBe('Så');
     expect(all[1]?.x).toBeGreaterThan(all[0]?.x ?? 0);
+  });
+
+  it('bryter etter komma og punktum, men beholder tegnet på ordet', () => {
+    const laid = layoutAnalysis(analyzeText('For Åndens lov, som gir liv.'), {
+      includeVerseNumbers: false,
+    });
+    expect(laid.map((block) => block.text)).toEqual(['For', 'Åndens', 'lov,', 'som', 'gir', 'liv.']);
+    expect(laid[2]?.text).toBe('lov,');
+    expect(laid[3]?.y).toBe((laid[2]?.y ?? 0) + BLOCK_H + ROW_GAP);
+    expect(laid[5]?.y).toBe(laid[3]?.y);
+
+    const plain = layoutAnalysis(analyzeText('For Åndens lov, som gir liv.'), {
+      includeVerseNumbers: false,
+      lineBreaks: NO_BREAKS,
+    });
+    expect(new Set(plain.map((block) => block.y)).size).toBe(1);
   });
 });
