@@ -4,7 +4,7 @@ export const GRID = 24;
 export const BLOCK_H = 34;
 export const WORD_GAP = 8;
 export const ROW_GAP = 18;
-export const START_X = 80;
+export const START_X = 220;
 export const START_Y = 156;
 export const BLOCK_PAD_X = 22;
 

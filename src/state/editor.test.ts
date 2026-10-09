@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { resolveEnd } from '../lib/snap';
+import { blockRect } from '../lib/geometry';
 import { createEditorState, reduce } from './editor';
 
 const ROM_GLUED = `1Så er det da ingen fordømmelse for dem som er i Kristus Jesus.
@@ -113,7 +115,17 @@ describe('grupper, fraser og piler', () => {
     const [alfa, beta] = state.project.blocks;
     state = reduce(state, {
       type: 'add-arrow',
-      arrow: { id: 'p1', fromId: alfa.id, toId: beta.id, label: 'Grunn', style: 'curved', color: '#3f4f42' },
+      arrow: {
+        id: 'p1',
+        fromId: alfa.id,
+        toId: beta.id,
+        label: 'Grunn',
+        style: 'curved',
+        color: '#3f4f42',
+        relation: null,
+        from: { x: 0, y: 0, targetId: alfa.id, edge: true },
+        to: { x: 0, y: 0, targetId: beta.id, edge: true },
+      },
     });
     state = reduce(state, {
       type: 'commit-move',
@@ -121,5 +133,117 @@ describe('grupper, fraser og piler', () => {
     });
     expect(state.project.arrows[0]).toMatchObject({ fromId: alfa.id, toId: beta.id, label: 'Grunn', style: 'curved' });
     expect(state.project.blocks.find((block) => block.id === beta.id)?.y).toBe(beta.y + 40);
+  });
+});
+
+describe('runde 2', () => {
+  function passage() {
+    return reduce(createEditorState(), {
+      type: 'import-text',
+      text: 'Alfa beta gamma',
+      reference: 'Rom 8,1–4',
+      now: NOW,
+    });
+  }
+
+  it('tegner en fri pil, fester enden og bytter relasjon uten å flytte den', () => {
+    let state = passage();
+    const [alfa] = state.project.blocks;
+    state = reduce(state, {
+      type: 'add-arrow',
+      arrow: {
+        id: 'p2',
+        fromId: '',
+        toId: '',
+        label: '',
+        style: 'straight',
+        color: null,
+        relation: 'årsak',
+        from: { x: 12, y: 8, targetId: null, edge: false },
+        to: { x: 4, y: 16, targetId: alfa.id, edge: false },
+      },
+    });
+    const before = state.project.arrows[0];
+    expect(before).toMatchObject({ relation: 'årsak', toId: alfa.id, from: { x: 12, y: 8, targetId: null } });
+
+    state = reduce(state, {
+      type: 'commit-move',
+      positions: [{ id: alfa.id, x: alfa.x + 30, y: alfa.y + 20 }],
+    });
+    const moved = state.project.blocks.find((block) => block.id === alfa.id)!;
+    const attached = resolveEnd(state.project.arrows[0].to, blockRect(moved.x, moved.y, 40), { x: 0, y: 0 });
+    expect(attached).toEqual({ x: moved.x + 4, y: moved.y + 16 });
+    expect(state.project.arrows[0].from).toEqual(before.from);
+
+    state = reduce(state, { type: 'update-arrow', id: 'p2', patch: { relation: 'middel' } });
+    expect(state.project.arrows[0]).toMatchObject({
+      relation: 'middel',
+      from: before.from,
+      to: before.to,
+    });
+  });
+
+  it('gir ramme, navn og sletting i forklaringen', () => {
+    let state = passage();
+    const [alfa] = state.project.blocks;
+    const color = state.project.frameColors[0];
+    state = reduce(state, {
+      type: 'set-frames',
+      targetIds: [alfa.id],
+      colorId: color.id,
+      thickness: 4,
+      style: 'dashed',
+    });
+    expect(state.project.frames[0]).toMatchObject({ targetId: alfa.id, colorId: color.id, thickness: 4, style: 'dashed' });
+
+    state = reduce(state, { type: 'update-frame-color', id: color.id, patch: { name: 'ledd' } });
+    expect(state.project.frameColors.find((entry) => entry.id === color.id)?.name).toBe('ledd');
+
+    state = reduce(state, { type: 'delete-frame-color', id: color.id });
+    expect(state.project.frameColors.some((entry) => entry.id === color.id)).toBe(false);
+    expect(state.project.frames).toHaveLength(0);
+    expect(reduce(state, { type: 'undo' }).project.frames).toHaveLength(1);
+  });
+
+  it('fester en kommentar og kan minimere den', () => {
+    let state = passage();
+    const [alfa] = state.project.blocks;
+    state = reduce(state, {
+      type: 'add-comment',
+      comment: { id: 'c9', targetId: alfa.id, x: 8, y: -4, text: 'Se v. 2', minimized: false, anchored: true },
+    });
+    state = reduce(state, { type: 'update-comment', id: 'c9', patch: { minimized: true } });
+    expect(state.project.comments[0]).toMatchObject({ minimized: true, anchored: true, targetId: alfa.id });
+  });
+
+  it('setter skrift globalt og på én brikke', () => {
+    let state = passage();
+    const [alfa, beta] = state.project.blocks;
+    state = reduce(state, { type: 'set-typography', patch: { fontFamily: 'neutral', fontSize: 20, fontWeight: 600 } });
+    state = reduce(state, { type: 'set-block-font', blockIds: [alfa.id], patch: { fontFamily: 'elegant', fontSize: 24 } });
+    expect(state.project.typography).toMatchObject({ fontFamily: 'neutral', fontSize: 20, fontWeight: 600 });
+    expect(state.project.blocks.find((block) => block.id === alfa.id)).toMatchObject({ fontFamily: 'elegant', fontSize: 24 });
+    expect(state.project.blocks.find((block) => block.id === beta.id)?.fontFamily).toBeNull();
+  });
+
+  it('legger symbol og rolle på utvalget', () => {
+    let state = passage();
+    const [alfa, beta] = state.project.blocks;
+    state = reduce(state, {
+      type: 'add-connector',
+      connector: {
+        id: 'k1',
+        kind: 'apposisjon',
+        fromId: alfa.id,
+        toId: beta.id,
+        from: { x: 0, y: 0, targetId: alfa.id, edge: true },
+        to: { x: 0, y: 0, targetId: beta.id, edge: true },
+      },
+    });
+    state = reduce(state, { type: 'add-marker', marker: { id: 'm1', kind: 'innskutt', targetIds: [alfa.id, beta.id] } });
+    state = reduce(state, { type: 'set-role', blockIds: [alfa.id], role: 'grunn' });
+    expect(state.project.connectors[0].kind).toBe('apposisjon');
+    expect(state.project.markers[0]).toMatchObject({ kind: 'innskutt', targetIds: [alfa.id, beta.id] });
+    expect(state.project.blocks.find((block) => block.id === alfa.id)?.role).toBe('grunn');
   });
 });

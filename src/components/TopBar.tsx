@@ -4,11 +4,13 @@ import { projectFilename } from '../lib/filename';
 import { parseProject } from '../lib/project';
 import { useEditor } from '../state/EditorContext';
 import { IconMinus, IconPlus, IconRedo, IconUndo } from './icons';
+import { ExportMenu, GlobalFontMenu, ViewMenu } from './menus';
 
 export function TopBar() {
   const api = useEditor();
   const fileRef = useRef<HTMLInputElement>(null);
   const [reference, setReference] = useState(api.project.reference);
+  const [menu, setMenu] = useState<'font' | 'view' | 'export' | null>(null);
   const hasNumbers = api.project.blocks.some((block) => block.kind === 'number');
 
   useEffect(() => setReference(api.project.reference), [api.project.reference]);
@@ -80,17 +82,24 @@ export function TopBar() {
           <IconPlus />
         </button>
         <span className="divider" />
-        <button
-          type="button"
-          className={api.tool === 'arrow' ? 'btn active' : 'btn'}
-          aria-pressed={api.tool === 'arrow'}
-          onClick={() => {
-            api.setTool(api.tool === 'arrow' ? 'select' : 'arrow');
-            api.setArrowFrom(null);
-          }}
-        >
-          Pil
-        </button>
+        <div className="color-anchor">
+          <button type="button" className={menu === 'font' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'font' ? null : 'font')}>
+            Skrift
+          </button>
+          {menu === 'font' && <GlobalFontMenu onClose={() => setMenu(null)} />}
+        </div>
+        <div className="color-anchor">
+          <button type="button" className={menu === 'view' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'view' ? null : 'view')}>
+            Vis
+          </button>
+          {menu === 'view' && <ViewMenu onClose={() => setMenu(null)} />}
+        </div>
+        <div className="color-anchor">
+          <button type="button" className={menu === 'export' ? 'btn active' : 'btn'} onClick={() => setMenu(menu === 'export' ? null : 'export')}>
+            Eksporter
+          </button>
+          {menu === 'export' && <ExportMenu onClose={() => setMenu(null)} />}
+        </div>
         <button type="button" className="btn" disabled={!hasNumbers} onClick={api.deleteAllNumbers}>
           Slett alle tall
         </button>

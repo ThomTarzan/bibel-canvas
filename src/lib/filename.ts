@@ -6,7 +6,7 @@ export function formatIsoDate(date: Date): string {
 }
 
 /** "Rom 8,1–4" + 8 Oct 2026 → Rom-8-1-4_2026-10-08.json */
-export function projectFilename(reference: string, date: Date): string {
+export function projectFilename(reference: string, date: Date, extension: 'json' | 'png' | 'svg' = 'json'): string {
   const slug = reference
     .trim()
     .replace(/[–—]/g, '-')
@@ -15,5 +15,5 @@ export function projectFilename(reference: string, date: Date): string {
     .replace(/[^0-9A-Za-zÆØÅæøå-]+/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-  return `${slug || 'bibeltekst'}_${formatIsoDate(date)}.json`;
+  return `${slug || 'bibeltekst'}_${formatIsoDate(date)}.${extension}`;
 }

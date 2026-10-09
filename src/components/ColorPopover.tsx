@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ARROW_COLORS, FILL_COLORS, INK_COLORS } from '../lib/colors';
+import { ARROW_OUTLINE, ARROW_OUTLINE_CHOICES, FILL_COLORS, INK_COLORS } from '../lib/colors';
 import { useEditor } from '../state/EditorContext';
 
 type Target = 'fill' | 'text' | 'group' | 'arrow';
@@ -11,7 +11,15 @@ const TARGETS: { id: Target; label: string }[] = [
   { id: 'arrow', label: 'Pil' },
 ];
 
-export function ColorPopover({ onClose }: { onClose: () => void }) {
+export function ColorPopover({
+  onClose,
+  fixed,
+  word = false,
+}: {
+  onClose: () => void;
+  fixed?: { left: number; top: number };
+  word?: boolean;
+}) {
   const { project, selection, setFill, setTextColor, setGroupFill, setArrowColor } = useEditor();
   const ref = useRef<HTMLDivElement>(null);
   const blockIds = selection.filter((id) => project.blocks.some((block) => block.id === id));
@@ -22,6 +30,7 @@ export function ColorPopover({ onClose }: { onClose: () => void }) {
   const arrows = project.arrows.filter((arrow) => selection.includes(arrow.id));
 
   const available = TARGETS.filter((target) => {
+    if (word && target.id !== 'fill' && target.id !== 'text') return false;
     if (target.id === 'fill' || target.id === 'text') return blocks.length > 0;
     if (target.id === 'group') return groups.length > 0;
     return arrows.length > 0;
@@ -39,7 +48,7 @@ export function ColorPopover({ onClose }: { onClose: () => void }) {
 
   if (!active) return null;
 
-  const palette = active === 'text' ? INK_COLORS : active === 'arrow' ? ARROW_COLORS : FILL_COLORS;
+  const palette = active === 'text' ? INK_COLORS : active === 'arrow' ? ARROW_OUTLINE_CHOICES : FILL_COLORS;
   const currentValues =
     active === 'text'
       ? blocks.map((block) => block.textColor)
@@ -58,7 +67,12 @@ export function ColorPopover({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="popover" ref={ref} onPointerDown={(event) => event.stopPropagation()}>
+    <div
+      className={fixed ? 'popover popover-fixed' : 'popover'}
+      style={fixed ? { left: fixed.left, top: fixed.top } : undefined}
+      ref={ref}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <div className="segment">
         {available.map((item) => (
           <button
@@ -94,7 +108,7 @@ export function ColorPopover({ onClose }: { onClose: () => void }) {
         Egen farge
         <input
           type="color"
-          defaultValue={typeof uniform === 'string' ? uniform : '#3f4f42'}
+          defaultValue={typeof uniform === 'string' ? uniform : active === 'arrow' ? ARROW_OUTLINE : '#e23d8c'}
           key={typeof uniform === 'string' ? uniform : 'standard'}
           onBlur={(event) => apply(event.target.value)}
         />
