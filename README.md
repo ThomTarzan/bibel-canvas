@@ -24,6 +24,12 @@ I innstillingene for depotet må Pages-kilden stå på **GitHub Actions**.
 
 Vite bruker base `/bibel-canvas/`, så stil og skript lastes under den stien.
 
+## Bibel-quiz
+
+En statisk quiz over Det nye testamente ligger i [`quiz/`](quiz/) og blir med i Pages-bygget. Den kan åpnes på [https://thomtarzan.github.io/bibel-canvas/quiz/](https://thomtarzan.github.io/bibel-canvas/quiz/).
+
+Tekstfilene lages på nytt med `python3 quiz/tools/build_texts.py` (krever `pysword`, se `quiz/tools/requirements.txt`). Selve siden er HTML, CSS og JavaScript og trenger ikke bygg.
+
 ## Prosjektfil
 
 Lagre og åpne er lokal JSON. Filnavnet kommer fra referanse og dato, for eksempel `Rom-8-1-4_2026-10-08.json`. PNG og SVG bruker samme navn. Arbeidet lagres også automatisk i nettleserens localStorage.
