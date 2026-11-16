@@ -73,6 +73,11 @@ test('the five-book window always contains the answer and is clamped', () => {
     assert.equal(window.end - window.start, 4);
     assert.ok(window.start <= 10 && 10 <= window.end);
   }
+  assert.deepEqual(Q.bookHintWindow(3, 1, 0.4), { start: 0, end: 2 });
+  assert.deepEqual(Q.bookHintWindow(1, 0, 0.8), { start: 0, end: 0 });
+  const chapter = Q.bookHintWindow(16, 0, 0.99);
+  assert.deepEqual(chapter, { start: 0, end: 4 });
+  assert.ok(chapter.start <= 0 && 0 <= chapter.end);
 });
 
 test('context stays inside the book and can grow until the edge', () => {
