@@ -84,6 +84,8 @@
     wrongChapters: {},
     wrongVerses: {},
     bookWindow: null,
+    chapterWindow: null,
+    verseWindow: null,
     solvedBook: false,
     solvedChapter: false,
     log: [],
@@ -97,6 +99,7 @@
     var fallback = {
       translation: 'noblb',
       motion: 'stille',
+      lys: false,
       session: { score: 0, rounds: 0 },
       previous: null,
       inProgress: null,
@@ -112,6 +115,7 @@
       return {
         translation: translation,
         motion: motion,
+        lys: !!data.lys,
         session: {
           score: numberOr(session.score, 0),
           rounds: numberOr(session.rounds, 0),
@@ -151,6 +155,8 @@
     state.wrongChapters = {};
     state.wrongVerses = {};
     state.bookWindow = null;
+    state.chapterWindow = null;
+    state.verseWindow = null;
     state.solvedBook = false;
     state.solvedChapter = false;
   }
@@ -177,6 +183,8 @@
       wrongChapters: Object.keys(state.wrongChapters),
       wrongVerses: Object.keys(state.wrongVerses),
       bookWindow: state.bookWindow,
+      chapterWindow: state.chapterWindow,
+      verseWindow: state.verseWindow,
       solvedBook: state.solvedBook,
       solvedChapter: state.solvedChapter,
     };
@@ -275,6 +283,8 @@
     state.wrongChapters = listToMap(saved.wrongChapters);
     state.wrongVerses = listToMap(saved.wrongVerses);
     state.bookWindow = saved.bookWindow && Number.isFinite(saved.bookWindow.start) ? saved.bookWindow : null;
+    state.chapterWindow = saved.chapterWindow && Number.isFinite(saved.chapterWindow.start) ? saved.chapterWindow : null;
+    state.verseWindow = saved.verseWindow && Number.isFinite(saved.verseWindow.start) ? saved.verseWindow : null;
     state.solvedBook = !!saved.solvedBook;
     state.solvedChapter = !!saved.solvedChapter;
     state.giveUpArmed = false;
@@ -323,14 +333,61 @@
     save();
   }
 
-  function bookHint() {
-    if (state.round.status !== 'play' || state.solvedBook) return;
-    state.giveUpArmed = false;
+  function chapterNumbers(book) {
+    var numbers = [];
+    book.chapters.forEach(function (chapter, index) {
+      if (chapter.length) numbers.push(index + 1);
+    });
+    return numbers;
+  }
+
+  function verseList() {
+    var book = state.bible.books[state.target.bookIndex];
+    return book.chapters[state.target.chapter - 1] || [];
+  }
+
+  function levelHint() {
+    if (state.round.status !== 'play') return false;
+    var roll = Math.random();
+    if (!state.solvedBook) {
+      state.round = Q.applyBookHint(state.round);
+      state.bookWindow = Q.bookHintWindow(state.bible.books.length, state.target.bookIndex, roll);
+      return true;
+    }
+    if (!state.solvedChapter) {
+      var numbers = chapterNumbers(state.bible.books[state.target.bookIndex]);
+      var index = numbers.indexOf(state.target.chapter);
+      if (index < 0) return false;
+      state.round = Q.applyBookHint(state.round);
+      state.chapterWindow = Q.bookHintWindow(numbers.length, index, roll);
+      return true;
+    }
+    var verses = verseList();
+    var verseIndex = -1;
+    for (var i = 0; i < verses.length; i += 1) {
+      if (verses[i].key === state.target.key) verseIndex = i;
+    }
+    if (verseIndex < 0) return false;
     state.round = Q.applyBookHint(state.round);
-    state.bookWindow = Q.bookHintWindow(state.bible.books.length, state.target.bookIndex, Math.random());
+    state.verseWindow = Q.bookHintWindow(verses.length, verseIndex, roll);
+    return true;
+  }
+
+  function hint() {
+    state.giveUpArmed = false;
+    if (!levelHint()) return;
     rememberVerse();
     save();
     render();
+  }
+
+  function maybeLys(level) {
+    if (!state.prefs.lys || state.round.status !== 'play') return;
+    var shown = level === 'book' ? state.bookWindow : level === 'chapter' ? state.chapterWindow : state.verseWindow;
+    if (shown) return;
+    var wrongs = level === 'book' ? state.wrongBooks : level === 'chapter' ? state.wrongChapters : state.wrongVerses;
+    if (Object.keys(wrongs).length !== 1) return;
+    levelHint();
   }
 
   function extraHelp() {
@@ -367,6 +424,7 @@
     } else if (!state.wrongBooks[index]) {
       state.wrongBooks[index] = true;
       state.round = Q.applyWrong(state.round);
+      maybeLys('book');
     }
     rememberVerse();
     save();
@@ -382,6 +440,7 @@
     } else if (!state.wrongChapters[number]) {
       state.wrongChapters[number] = true;
       state.round = Q.applyWrong(state.round);
+      maybeLys('chapter');
     }
     rememberVerse();
     save();
@@ -398,6 +457,7 @@
     } else if (!state.wrongVerses[key]) {
       state.wrongVerses[key] = true;
       state.round = Q.applyWrong(state.round);
+      maybeLys('verse');
       rememberVerse();
       save();
     }
@@ -520,12 +580,11 @@
       return;
     }
     var book = state.bible.books[state.target.bookIndex];
-    var hintDisabled = state.solvedBook ? ' disabled' : '';
     var extraDisabled = Q.contextCanGrow(book.verses, state.target, state.round.radius) ? '' : ' disabled';
     var giveUpLabel = state.giveUpArmed ? 'Bekreft tap' : 'Gi opp';
     actions.innerHTML = ''
       + '<div class="action-row">'
-      + '<button type="button" class="secondary" data-act="hint"' + hintDisabled + '>Hint</button>'
+      + '<button type="button" class="secondary" data-act="hint">Hint</button>'
       + '<button type="button" class="secondary" data-act="extra"' + extraDisabled + '>Ekstra hjelp</button>'
       + '</div>'
       + '<button type="button" class="quiet" data-act="giveup">' + giveUpLabel + '</button>';
@@ -567,12 +626,12 @@
   function chapterStep() {
     var book = state.bible.books[state.target.bookIndex];
     var revealed = state.round.status !== 'play';
-    var buttons = book.chapters.map(function (chapter, index) {
-      if (!chapter.length) return '';
-      var number = index + 1;
+    var numbers = chapterNumbers(book);
+    var buttons = numbers.map(function (number, position) {
       var classes = 'pick';
       if (state.wrongChapters[number]) classes += ' is-wrong';
       if ((state.solvedChapter || revealed) && number === state.target.chapter) classes += ' is-right';
+      else if (inWindow(state.chapterWindow, position) && !state.wrongChapters[number]) classes += ' is-window';
       return '<button type="button" class="' + classes + '" data-act="chapter" data-chapter="' + number + '">' + number + '</button>';
     }).join('');
     return ''
@@ -585,10 +644,11 @@
     var book = state.bible.books[state.target.bookIndex];
     var chapter = book.chapters[state.target.chapter - 1] || [];
     var revealed = state.round.status !== 'play';
-    var buttons = chapter.map(function (verse) {
+    var buttons = chapter.map(function (verse, position) {
       var classes = 'pick';
       if (state.wrongVerses[verse.key]) classes += ' is-wrong';
       if ((state.round.status === 'correct' || revealed) && verse.key === state.target.key) classes += ' is-right';
+      else if (inWindow(state.verseWindow, position) && !state.wrongVerses[verse.key]) classes += ' is-window';
       return '<button type="button" class="' + classes + '" data-act="verse" data-key="' + esc(verse.key) + '">' + esc(verse.label) + '</button>';
     }).join('');
     return ''
@@ -616,7 +676,7 @@
     var button = event.target.closest('button');
     if (!button) return;
     var act = button.dataset.act;
-    if (act === 'hint') bookHint();
+    if (act === 'hint') hint();
     else if (act === 'extra') extraHelp();
     else if (act === 'giveup') giveUp();
     else if (act === 'next') newRound();
@@ -629,6 +689,8 @@
     document.querySelectorAll('input[name="motion"]').forEach(function (input) {
       input.checked = input.value === state.prefs.motion;
     });
+    var lys = document.getElementById('lys');
+    if (lys) lys.checked = !!state.prefs.lys;
     var note = document.getElementById('finish-note');
     var button = document.getElementById('finish-session');
     if (state.prefs.session.rounds < 1) {
@@ -662,6 +724,15 @@
       if (requestId !== state.requestId) return;
       showError();
     });
+  }
+
+  function setLys(on) {
+    state.prefs.lys = !!on;
+    save();
+  }
+
+  function inWindow(window, position) {
+    return window && position >= window.start && position <= window.end;
   }
 
   function setMotion(motion) {
@@ -706,6 +777,7 @@
   menuPanel.addEventListener('change', function (event) {
     if (event.target.name === 'translation') setTranslation(event.target.value);
     if (event.target.name === 'motion') setMotion(event.target.value);
+    if (event.target.id === 'lys') setLys(event.target.checked);
   });
   document.getElementById('finish-session').addEventListener('click', finishSession);
   document.getElementById('new-session').addEventListener('click', function () { summary.close(); });
