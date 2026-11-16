@@ -26,7 +26,7 @@ Vite bruker base `/bibel-canvas/`, så stil og skript lastes under den stien.
 
 ## Bibel-quiz
 
-En statisk quiz over Det nye testamente ligger i [`quiz/`](quiz/) og blir med i Pages-bygget. Den kan åpnes på [https://thomtarzan.github.io/bibel-canvas/quiz/](https://thomtarzan.github.io/bibel-canvas/quiz/).
+En statisk quiz over Det nye testamente ligger i [`quiz/`](quiz/) og blir med i Pages-bygget. Den kan åpnes på [https://thomtarzan.github.io/bibel-canvas/quiz/](https://thomtarzan.github.io/bibel-canvas/quiz/). Tekstene er En Levende Bok, Bibelen 1930 og Berean Standard Bible.
 
 Tekstfilene lages på nytt med `python3 quiz/tools/build_texts.py` (krever `pysword`, se `quiz/tools/requirements.txt`). Selve siden er HTML, CSS og JavaScript og trenger ikke bygg.
 

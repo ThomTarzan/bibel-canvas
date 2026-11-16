@@ -5,3 +5,4 @@ dist
 .vite
 coverage
 quiz/tools/.cache/
+**/__pycache__/

@@ -7,13 +7,13 @@
     <title>Bibel-quiz</title>
     <meta
       name="description"
-      content="Gjett hvor i Det nye testamente verset står. En Levende Bok og Bibelen 1930."
+      content="Gjett hvor i Det nye testamente verset står. En Levende Bok, Bibelen 1930 og Berean Standard Bible."
     />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <script>
       try {
-        var saved = JSON.parse(localStorage.getItem("bibel-quiz.v1") || "null");
+        var saved = JSON.parse(localStorage.getItem("bibel-quiz.v2") || "null");
         var motion = saved && (saved.motion === "rolig" || saved.motion === "levende") ? saved.motion : "stille";
         document.documentElement.dataset.motion = motion;
       } catch (e) {
@@ -31,79 +31,101 @@
     </div>
 
     <div class="wrap">
-      <header class="topbar">
-        <div class="titles">
+      <header class="mobile-bar">
+        <div>
           <p class="eyebrow">Det nye testamente</p>
           <h1>Bibel-quiz</h1>
-          <p class="scoreline" id="scoreline" aria-live="polite"></p>
         </div>
-        <button type="button" class="menu-button" id="open-menu" aria-haspopup="dialog">Meny</button>
+        <div class="mobile-toggles">
+          <button type="button" id="toggle-log" aria-pressed="false">Logg</button>
+          <button type="button" id="toggle-menu" aria-pressed="false">Meny</button>
+        </div>
       </header>
 
-      <main>
-        <p class="stake" id="stake"></p>
-        <article class="scroll">
-          <div class="sheen" aria-hidden="true"></div>
-          <div class="passage" id="passage">
-            <div class="passage-fit" id="passage-fit">
-              <p class="verse">Henter teksten…</p>
+      <div class="stage">
+        <aside class="side side-log" id="log-panel">
+          <p class="eyebrow brand-kicker">Det nye testamente</p>
+          <h1 class="brand">Bibel-quiz</h1>
+          <dl class="stats">
+            <div>
+              <dt>Quiz</dt>
+              <dd id="quiz-info"></dd>
             </div>
-          </div>
-        </article>
-        <p class="feedback" id="feedback" aria-live="polite"></p>
-        <div class="actions" id="actions"></div>
-        <section class="picker" id="picker" aria-label="Finn stedet"></section>
-      </main>
-    </div>
+            <div>
+              <dt>Hint</dt>
+              <dd id="hint-info"></dd>
+            </div>
+            <div>
+              <dt>Score</dt>
+              <dd id="score-info"></dd>
+            </div>
+          </dl>
+          <h2 class="log-title">Logg</h2>
+          <ol class="log-list" id="log-list"></ol>
+        </aside>
 
-    <dialog id="menu" aria-labelledby="menu-title">
-      <div class="dialog-head">
-        <h2 id="menu-title">Meny</h2>
-        <button type="button" class="quiet" id="close-menu">Lukk</button>
+        <main>
+          <article class="scroll">
+            <div class="sheen" aria-hidden="true"></div>
+            <div class="passage" id="passage">
+              <div class="passage-fit" id="passage-fit">
+                <p class="verse">Henter teksten…</p>
+              </div>
+            </div>
+          </article>
+          <p class="feedback" id="feedback" aria-live="polite"></p>
+          <div class="actions" id="actions"></div>
+          <section class="picker" id="picker" aria-label="Finn stedet"></section>
+        </main>
+
+        <aside class="side side-menu" id="menu-panel">
+          <h2 class="menu-title">Meny</h2>
+          <fieldset>
+            <legend>Oversettelse</legend>
+            <label class="choice"><input type="radio" name="translation" value="noblb" /> En Levende Bok</label>
+            <label class="choice"><input type="radio" name="translation" value="norsk1930" /> Bibelen 1930</label>
+            <label class="choice"><input type="radio" name="translation" value="bsb" /> Berean Standard Bible</label>
+            <p class="hint-note">Bytte av oversettelse starter en ny runde.</p>
+          </fieldset>
+
+          <fieldset>
+            <legend>Bevegelse</legend>
+            <label class="choice"><input type="radio" name="motion" value="stille" /> Stille</label>
+            <label class="choice"><input type="radio" name="motion" value="rolig" /> Rolig</label>
+            <label class="choice"><input type="radio" name="motion" value="levende" /> Levende</label>
+            <p class="hint-note">Stille er uten bevegelse. Rolig har sakte skyer. Levende lar teksten flyte litt.</p>
+          </fieldset>
+
+          <section class="panel">
+            <h3>Økt</h3>
+            <p id="finish-note"></p>
+            <button type="button" class="secondary wide" id="finish-session">Avslutt økt</button>
+          </section>
+
+          <section class="panel about">
+            <h3>Slik spiller du</h3>
+            <p>Du får ett vers uten referanse. Trykk bok, kapittel og vers. Feil knapp blir rød og koster 1 poeng. Riktig knapp blir grønn og åpner neste nivå. Runden er vunnet når verset stemmer.</p>
+            <p>Hint markerer fem bøker på rad. Én av dem er riktig, og plasseringen varierer. Det koster 1 poeng. Ekstra hjelp viser ett vers før og ett etter, ett trinn om gangen, og koster 1 poeng per trinn.</p>
+            <p>Runden starter på 4 poeng. Riktig vers gir poengene som er igjen, også når de er negative. Gi opp gir minus det du har brukt, eller 0 hvis du ikke har brukt noe. Summen sammenlignes med forrige økt når du avslutter.</p>
+
+            <h3>Om tekstene</h3>
+            <h4>En Levende Bok</h4>
+            <p>Biblica® Open En Levende Bok: Det Nye Testamentet™<br />Biblica® Open Norwegian Living New Testament™<br />Copyright © 1978, 1988, 2005 by Biblica, Inc.<br />“Biblica” is a trademark registered in the United States Patent and Trademark Office by Biblica, Inc. Used with permission.</p>
+            <p>Teksten er gjort tilgjengelig under <a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="noopener">Creative Commons Attribution-ShareAlike 4.0</a>. Originalen er fritt tilgjengelig på <a href="https://www.biblica.com/" rel="noopener">www.biblica.com</a>, <a href="https://open.bible" rel="noopener">open.bible</a> og <a href="https://ebible.org/noblb" rel="noopener">eBible.org</a> (id noblb).</p>
+            <p>Fotnoter, henvisninger og overskrifter er tatt bort. Noen vers er slått sammen og vises som ett valg, for eksempel 1–2.</p>
+
+            <h4>Bibelen 1930</h4>
+            <p>Bibelen på Norsk (1930), Det Norske Bibelselskap. Public domain. Kilde: CrossWire SWORD-modul «Norsk», versjon 2.0, KJV-versifisering. Teksten er skannet og korrekturlest av H. Priebe og medarbeidere, basert på versjonen til Tore Vamraak.</p>
+
+            <h4>Berean Standard Bible</h4>
+            <p>The Holy Bible, Berean Standard Bible, is produced in cooperation with Bible Hub, Discovery Bible, unfoldingWord, Bible Aquifer, OpenBible.com, and the Berean Bible Translation Committee. This text of God’s Word has been dedicated to the public domain.</p>
+            <p>Kilde: <a href="https://bereanbible.com/bsb.txt" rel="noopener">bereanbible.com/bsb.txt</a>. Quizen bruker bare Det nye testamente. Tomme versnummer i kilden, som Joh 5,4, er utelatt.</p>
+
+            <p class="version">Bibel-quiz v0.2 · Satsen er Source Serif 4, lisensiert under SIL Open Font License.</p>
+          </section>
+        </aside>
       </div>
-
-      <fieldset>
-        <legend>Oversettelse</legend>
-        <label class="choice"><input type="radio" name="translation" value="noblb" /> En Levende Bok</label>
-        <label class="choice"><input type="radio" name="translation" value="norsk1930" /> Bibelen 1930</label>
-        <p class="hint-note">Bytte av oversettelse starter en ny runde.</p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Bevegelse</legend>
-        <label class="choice"><input type="radio" name="motion" value="stille" /> Stille</label>
-        <label class="choice"><input type="radio" name="motion" value="rolig" /> Rolig</label>
-        <label class="choice"><input type="radio" name="motion" value="levende" /> Levende</label>
-        <p class="hint-note">Stille er uten bevegelse, og er valgt fra start. Rolig har sakte skyer og et sjeldent lysskjær. Levende lar teksten flyte litt, og lyset kommer oftere.</p>
-      </fieldset>
-
-      <section class="panel">
-        <h3>Økt</h3>
-        <p id="finish-note"></p>
-        <button type="button" class="secondary wide" id="finish-session">Avslutt økt</button>
-      </section>
-
-      <section class="panel about">
-        <h3>Slik spiller du</h3>
-        <p>Du får ett vers fra Det nye testamente, uten referanse. Finn stedet med bok, kapittel og vers. Du trenger ikke å skrive.</p>
-        <p>Hver runde starter på 4 poeng. Hint og feil svar koster 1 poeng og legger til ett vers før og ett vers etter. Det gjelder også ved starten og slutten av en bok, der det ikke finnes flere vers å vise. Du kan bruke inntil 3 hint.</p>
-        <p>Riktig svar gir poengene som er igjen. Gir du opp, eller svarer feil når det bare er 1 poeng igjen, er runden et tap. Tapet er minus så mange poeng som hint og feil har kostet. Uten hint og uten feil gir tapet 0. Bruker du hint og likevel taper, blir runden negativ.</p>
-        <p>Summen av rundene kan derfor bli negativ. Når du avslutter økten, er det totalsummen som gjelder. Målet er en høyere sum enn forrige gang. En runde som ikke er ferdig, teller ikke med. Alt lagres bare i denne nettleseren. Ingen innlogging og ingen sporing.</p>
-        <p>Feil bok gir beskjed «Feil bok». Riktig bok og feil kapittel gir «Riktig bok». Riktig kapittel og feil vers gir «Riktig kapittel».</p>
-
-        <h3>Om tekstene</h3>
-        <h4>En Levende Bok</h4>
-        <p>Biblica® Open En Levende Bok: Det Nye Testamentet™<br />Biblica® Open Norwegian Living New Testament™<br />Copyright © 1978, 1988, 2005 by Biblica, Inc.<br />“Biblica” is a trademark registered in the United States Patent and Trademark Office by Biblica, Inc. Used with permission.</p>
-        <p>Teksten er gjort tilgjengelig under <a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="noopener">Creative Commons Attribution-ShareAlike 4.0</a>. Originalen fra Biblica, Inc. er fritt tilgjengelig på <a href="https://www.biblica.com/" rel="noopener">www.biblica.com</a> og <a href="https://open.bible" rel="noopener">open.bible</a>, og hos <a href="https://ebible.org/noblb" rel="noopener">eBible.org</a> (id noblb).</p>
-        <p>I quizen er fotnoter, kryssreferanser og overskrifter tatt bort. Verseteksten er uendret. Noen vers er slått sammen i kilden og vises som ett valg, for eksempel 1–2. Denne visningen er utgitt under samme lisens, CC BY-SA 4.0.</p>
-
-        <h4>Bibelen 1930</h4>
-        <p>Bibelen på Norsk (1930), Det Norske Bibelselskap. Public domain. Kilde: CrossWire SWORD-modul «Norsk», versjon 2.0, KJV-versifisering. Teksten er skannet og korrekturlest av H. Priebe og medarbeidere, basert på versjonen til Tore Vamraak.</p>
-        <p>Rettstavningen er fra 1930, med former som «efter», «forat» og «eders». Modulens versnummer følger KJV, og kan enkelte steder avvike fra slik verset står i den trykte boken.</p>
-
-        <p class="version">Bibel-quiz v0.1 · Satsen er Source Serif 4, lisensiert under SIL Open Font License.</p>
-      </section>
-    </dialog>
+    </div>
 
     <dialog id="summary" aria-labelledby="summary-title">
       <h2 id="summary-title">Økten er ferdig</h2>

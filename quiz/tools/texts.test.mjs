@@ -25,7 +25,7 @@ function count(data) {
   return data.books.reduce((sum, book) => sum + book.chapters.reduce((inner, chapter) => inner + chapter.length, 0), 0);
 }
 
-test('both translations cover the New Testament and the known verses', () => {
+test('the three translations cover the New Testament and the known verses', () => {
   const noblb = load('noblb.json');
   const norsk = load('norsk1930.json');
 
@@ -68,4 +68,18 @@ test('both translations cover the New Testament and the known verses', () => {
   assert.equal(verse(norsk, 'apg', 9, 36).text.includes('hind'), false);
   assert.equal(verse(norsk, '1kor', 11, 1).text.includes('1KO'), false);
   assert.equal(verse(norsk, 'mat', 1, 1).text.startsWith('Jesu Kristi'), true);
+
+  const bsb = load('bsb.json');
+  assert.equal(bsb.name, 'Berean Standard Bible');
+  assert.deepEqual(bsb.books.map((book) => book.id), IDS);
+  assert.equal(count(bsb), 7941);
+  assert.equal(
+    verse(bsb, 'joh', 3, 16).text,
+    'For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.',
+  );
+  assert.equal(
+    verse(bsb, 'rom', 8, 28).text,
+    'And we know that God works all things together for the good of those who love Him, who are called according to His purpose.',
+  );
+  assert.equal(verse(bsb, 'joh', 5, 4), null);
 });

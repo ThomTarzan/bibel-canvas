@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Bygg kompakte NT-JSON-filer til Bibel-quiz.
 
-Laster ned to kilder og skriver quiz/data/noblb.json og quiz/data/norsk1930.json.
+Laster ned kildene og skriver quiz/data/noblb.json, quiz/data/norsk1930.json
+og quiz/data/bsb.json.
 
 1. En Levende Bok (eBible id noblb), USFX:
    https://ebible.org/Scriptures/noblb_usfx.zip
 2. Bibelen 1930, CrossWire SWORD-modul Norsk (public domain, KJV-versifisering).
    Filnavnet på speilet er Norsk.zip (norsk.zip svarer 404):
    https://www.crosswire.org/ftpmirror/pub/sword/packages/rawzip/Norsk.zip
+3. Berean Standard Bible (public domain), offisiell tab-separert tekst:
+   https://bereanbible.com/bsb.txt
 
 Krever pysword (se requirements.txt). Fotnoter, henvisninger og overskrifter
 fjernes. Verseteksten beholdes. Tomme vers tas ikke med.
@@ -34,6 +37,36 @@ CACHE = Path(__file__).resolve().parent / ".cache"
 UA = "bibel-quiz-build/0.1 (+https://github.com/thomtarzan/bibel-canvas)"
 
 NOBLB_URL = "https://ebible.org/Scriptures/noblb_usfx.zip"
+BSB_URL = "https://bereanbible.com/bsb.txt"
+BSB_BOOKS = (
+    ("Matthew", "mat"),
+    ("Mark", "mrk"),
+    ("Luke", "luk"),
+    ("John", "joh"),
+    ("Acts", "apg"),
+    ("Romans", "rom"),
+    ("1 Corinthians", "1kor"),
+    ("2 Corinthians", "2kor"),
+    ("Galatians", "gal"),
+    ("Ephesians", "efe"),
+    ("Philippians", "fil"),
+    ("Colossians", "kol"),
+    ("1 Thessalonians", "1tess"),
+    ("2 Thessalonians", "2tess"),
+    ("1 Timothy", "1tim"),
+    ("2 Timothy", "2tim"),
+    ("Titus", "tit"),
+    ("Philemon", "flm"),
+    ("Hebrews", "heb"),
+    ("James", "jak"),
+    ("1 Peter", "1pet"),
+    ("2 Peter", "2pet"),
+    ("1 John", "1joh"),
+    ("2 John", "2joh"),
+    ("3 John", "3joh"),
+    ("Jude", "jud"),
+    ("Revelation", "aap"),
+)
 NORSK_URLS = (
     "https://www.crosswire.org/ftpmirror/pub/sword/packages/rawzip/norsk.zip",
     "https://www.crosswire.org/ftpmirror/pub/sword/packages/rawzip/Norsk.zip",
@@ -325,6 +358,45 @@ def build_norsk(refresh: bool) -> dict:
     }
 
 
+BSB_LINE = re.compile(r"^(.+?) (\d+):(\d+)\t(.*)$")
+
+
+def build_bsb(refresh: bool) -> dict:
+    url = download(BSB_URL, CACHE / "bsb.txt", refresh)
+    raw = (CACHE / "bsb.txt").read_text(encoding="utf-8")
+    found: dict[str, dict[int, list[list[str]]]] = {qid: {} for _name, qid in BSB_BOOKS}
+    names = {name: qid for name, qid in BSB_BOOKS}
+    for line in raw.splitlines():
+        match = BSB_LINE.match(line)
+        if not match:
+            continue
+        name, chapter_s, verse_s, text = match.groups()
+        qid = names.get(name)
+        if qid is None:
+            continue
+        text = normalize(text)
+        if not text:
+            continue
+        if "<" in text:
+            raise SystemExit(f"Markup igjen i BSB {name} {chapter_s}:{verse_s}")
+        found[qid].setdefault(int(chapter_s), []).append([verse_s, text])
+    books = []
+    for _name, qid in BSB_BOOKS:
+        chapters_map = found[qid]
+        if not chapters_map:
+            raise SystemExit(f"BSB mangler {qid}")
+        max_ch = max(chapters_map)
+        chapters = [dedupe(chapters_map.get(n, [])) for n in range(1, max_ch + 1)]
+        books.append({"id": qid, "chapters": chapters})
+    return {
+        "id": "bsb",
+        "name": "Berean Standard Bible",
+        "source": url,
+        "license": "Public domain",
+        "books": books,
+    }
+
+
 def spot_check(noblb: dict, norsk: dict) -> None:
     print("stikkprøver")
     require_phrase("ELB Joh 3,16", find_text(noblb, "joh", 3, 16), "elsket")
@@ -343,19 +415,41 @@ def spot_check(noblb: dict, norsk: dict) -> None:
     print("  fotnoter er fjernet i stikkprøvene")
 
 
+def spot_check_bsb(bsb: dict) -> None:
+    require_phrase(
+        "BSB John 3:16",
+        find_text(bsb, "joh", 3, 16),
+        "For God so loved the world",
+    )
+    require_phrase(
+        "BSB Romans 8:28",
+        find_text(bsb, "rom", 8, 28),
+        "all things together for the good",
+    )
+
+
 def main() -> None:
     argument_parser = argparse.ArgumentParser(description="Bygg NT-JSON til Bibel-quiz")
     argument_parser.add_argument("--refresh", action="store_true", help="last ned kildene på nytt")
+    argument_parser.add_argument("--only", choices=("noblb", "norsk1930", "bsb"), help="bygg bare én tekst")
     args = argument_parser.parse_args()
-    noblb = build_noblb(args.refresh)
-    norsk = build_norsk(args.refresh)
-    noblb_entries, _noblb_numbers = summarize(noblb)
-    norsk_entries, _norsk_numbers = summarize(norsk)
-    noblb["verseCount"] = noblb_entries
-    norsk["verseCount"] = norsk_entries
-    spot_check(noblb, norsk)
-    write_json(DATA / "noblb.json", noblb)
-    write_json(DATA / "norsk1930.json", norsk)
+    wanted = {args.only} if args.only else {"noblb", "norsk1930", "bsb"}
+    noblb = norsk = None
+    if "noblb" in wanted:
+        noblb = build_noblb(args.refresh)
+        noblb["verseCount"], _numbers = summarize(noblb)
+        write_json(DATA / "noblb.json", noblb)
+    if "norsk1930" in wanted:
+        norsk = build_norsk(args.refresh)
+        norsk["verseCount"], _numbers = summarize(norsk)
+        write_json(DATA / "norsk1930.json", norsk)
+    if noblb is not None and norsk is not None:
+        spot_check(noblb, norsk)
+    if "bsb" in wanted:
+        bsb = build_bsb(args.refresh)
+        bsb["verseCount"], _numbers = summarize(bsb)
+        spot_check_bsb(bsb)
+        write_json(DATA / "bsb.json", bsb)
 
 
 if __name__ == "__main__":
