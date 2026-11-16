@@ -1,6 +1,7 @@
 (function () {
   var Q = window.BibelQuiz;
-  var KEY = 'bibel-quiz.v2';
+  var S = window.BibelScore;
+  var KEY = 'bibel-quiz.v4';
 
   var BOOKS_NB = [
     { id: 'mat', name: 'Matteus', abbr: 'Matt' },
@@ -71,14 +72,14 @@
   var menuPanel = document.getElementById('menu-panel');
 
   var state = {
-    prefs: loadPrefs(),
+    store: loadStore(),
+    game: null,
     cache: new Map(),
     bible: null,
     target: null,
-    round: Q.newRound(),
+    round: blankVerse(),
     step: 'book',
     giveUpArmed: false,
-    awaitNewRound: false,
     requestId: 0,
     wrongBooks: {},
     wrongChapters: {},
@@ -88,47 +89,75 @@
     verseWindow: null,
     solvedBook: false,
     solvedChapter: false,
-    log: [],
     panel: null,
     lastBox: '',
     fitLock: false,
+    boardShown: 0,
+    overwrite: false,
   };
-  state.log = state.prefs.log;
 
-  function loadPrefs() {
-    var fallback = {
-      translation: 'noblb',
-      motion: 'stille',
-      lys: false,
-      session: { score: 0, rounds: 0 },
-      previous: null,
-      inProgress: null,
-      log: [],
-    };
+  function loadStore() {
+    var fallback = { slots: [], activeId: null };
     try {
       var data = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (!data) return fallback;
-      var motion = data.motion === 'rolig' || data.motion === 'levende' ? data.motion : 'stille';
-      var session = data.session || {};
-      var translation = data.translation;
-      if (translation !== 'norsk1930' && translation !== 'bsb') translation = 'noblb';
+      if (!data || !Array.isArray(data.slots)) return fallback;
       return {
-        translation: translation,
-        motion: motion,
-        lys: !!data.lys,
-        session: {
-          score: numberOr(session.score, 0),
-          rounds: numberOr(session.rounds, 0),
-        },
-        previous: data.previous && Number.isFinite(data.previous.score)
-          ? { score: data.previous.score, rounds: numberOr(data.previous.rounds, 0) }
-          : null,
-        inProgress: data.inProgress || null,
-        log: Array.isArray(data.log) ? data.log : [],
+        slots: data.slots.slice(0, 3).map(normalizeSlot),
+        activeId: data.activeId || null,
       };
     } catch (err) {
       return fallback;
     }
+  }
+
+  function normalizeSlot(slot) {
+    var translation = slot.translation;
+    if (translation !== 'norsk1930' && translation !== 'bsb') translation = 'noblb';
+    var motion = slot.motion === 'rolig' || slot.motion === 'levende' ? slot.motion : 'stille';
+    return {
+      id: String(slot.id || Date.now()),
+      score: numberOr(slot.score, 0),
+      verses: numberOr(slot.verses, 0),
+      streak: numberOr(slot.streak, 0),
+      updatedAt: slot.updatedAt || new Date().toISOString(),
+      translation: translation,
+      motion: motion,
+      lys: !!slot.lys,
+      log: Array.isArray(slot.log) ? slot.log : [],
+      inProgress: slot.inProgress || null,
+    };
+  }
+
+  function blankVerse() {
+    return {
+      status: 'play',
+      bookWrongs: 0,
+      chapterWrongs: 0,
+      verseWrongs: 0,
+      bookPoints: null,
+      chapterPoints: null,
+      versePoints: null,
+      guessing: 0,
+      fiveRowUses: 0,
+      radius: 0,
+      helpUsed: false,
+      awarded: 0,
+    };
+  }
+
+  function blankGame(settings) {
+    return {
+      id: String(Date.now()) + Math.floor(Math.random() * 1000),
+      score: 0,
+      verses: 0,
+      streak: 0,
+      updatedAt: new Date().toISOString(),
+      translation: settings && settings.translation ? settings.translation : 'noblb',
+      motion: settings && settings.motion ? settings.motion : 'stille',
+      lys: !!(settings && settings.lys),
+      log: [],
+      inProgress: null,
+    };
   }
 
   function numberOr(value, fallback) {
@@ -136,8 +165,11 @@
   }
 
   function save() {
-    state.prefs.log = state.log;
-    localStorage.setItem(KEY, JSON.stringify(state.prefs));
+    if (state.game) {
+      state.game.updatedAt = new Date().toISOString();
+      state.store.activeId = state.game.id;
+    }
+    localStorage.setItem(KEY, JSON.stringify(state.store));
   }
 
   function catalogFor(id) {
@@ -162,22 +194,17 @@
   }
 
   function rememberVerse() {
+    if (!state.game) return;
     if (!state.bible || !state.target || state.round.status !== 'play') {
-      state.prefs.inProgress = null;
+      state.game.inProgress = null;
       return;
     }
-    state.prefs.inProgress = {
+    state.game.inProgress = {
       translation: state.bible.id,
       bookId: state.bible.books[state.target.bookIndex].id,
       chapter: state.target.chapter,
       key: state.target.key,
-      round: {
-        points: state.round.points,
-        bookHints: state.round.bookHints,
-        extra: state.round.extra,
-        wrongs: state.round.wrongs,
-        radius: state.round.radius,
-      },
+      round: state.round,
       step: state.step,
       wrongBooks: Object.keys(state.wrongBooks),
       wrongChapters: Object.keys(state.wrongChapters),
@@ -259,7 +286,7 @@
   }
 
   function restoreRound(bible) {
-    var saved = state.prefs.inProgress;
+    var saved = state.game && state.game.inProgress;
     if (!saved || saved.translation !== bible.id || !saved.round) return false;
     var bookIndex = bible.books.findIndex(function (book) { return book.id === saved.bookId; });
     if (bookIndex < 0) return false;
@@ -269,15 +296,7 @@
     if (!verse) return false;
     var savedRound = saved.round;
     state.target = verse;
-    state.round = {
-      points: numberOr(savedRound.points, Q.START_POINTS),
-      bookHints: numberOr(savedRound.bookHints, 0),
-      extra: numberOr(savedRound.extra, 0),
-      wrongs: numberOr(savedRound.wrongs, 0),
-      radius: numberOr(savedRound.radius, 0),
-      status: 'play',
-      awarded: 0,
-    };
+    state.round = Object.assign(blankVerse(), saved.round, { status: 'play' });
     state.step = saved.step === 'chapter' || saved.step === 'verse' ? saved.step : 'book';
     state.wrongBooks = listToMap(saved.wrongBooks);
     state.wrongChapters = listToMap(saved.wrongChapters);
@@ -295,7 +314,7 @@
     if (!state.bible || state.bible.flat.length === 0) return;
     var index = Math.floor(Math.random() * state.bible.flat.length);
     state.target = state.bible.flat[index];
-    state.round = Q.newRound();
+    state.round = blankVerse();
     resetBoard();
     rememberVerse();
     save();
@@ -314,22 +333,211 @@
     return book.name + ' ' + state.target.chapter + sep + state.target.label;
   }
 
+  function formatScore(n) {
+    var sign = n < 0 ? '−' : '';
+    var abs = Math.round(Math.abs(n) * 10) / 10;
+    var text = Number.isInteger(abs) ? String(abs) : abs.toFixed(1).replace('.', ',');
+    return sign + text;
+  }
+
   function signed(n) {
-    if (n > 0) return '+' + n;
-    return Q.plain(n);
+    if (n > 0) return '+' + formatScore(n);
+    return formatScore(n);
+  }
+
+  function reduceMotion() {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function paintBoard(delta) {
+    if (!state.game) return;
+    var digits = document.getElementById('board-digits');
+    var board = document.getElementById('board');
+    var badge = document.getElementById('board-streak');
+    var target = state.game.score;
+    board.classList.remove('is-gain', 'is-loss');
+    if (!reduceMotion() && delta) {
+      board.classList.add(delta > 0 ? 'is-gain' : 'is-loss');
+      countTo(digits, state.boardShown, target);
+    } else {
+      digits.textContent = formatScore(target);
+    }
+    state.boardShown = target;
+    var deltaEl = document.getElementById('board-delta');
+    if (delta) {
+      deltaEl.hidden = false;
+      deltaEl.textContent = signed(delta);
+    } else {
+      deltaEl.hidden = true;
+    }
+    var mult = S.multiplier(state.game.streak);
+    badge.textContent = 'Rekke ' + state.game.streak + ' · ×' + String(mult).replace('.', ',');
+  }
+
+  function countTo(el, from, to) {
+    var start = performance.now();
+    var duration = 420;
+    function frame(now) {
+      var t = Math.min(1, (now - start) / duration);
+      var value = from + (to - from) * (1 - Math.pow(1 - t, 3));
+      el.textContent = formatScore(Math.round(value * 10) / 10);
+      if (t < 1) requestAnimationFrame(frame);
+      else el.textContent = formatScore(to);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function playDraw(value) {
+    var el = document.getElementById('draw');
+    if (!el) return;
+    el.hidden = false;
+    if (reduceMotion()) {
+      el.textContent = '5 på rad ' + signed(value);
+      return;
+    }
+    var steps = 14;
+    var i = 0;
+    var timer = setInterval(function () {
+      i += 1;
+      if (i < steps) {
+        el.textContent = '5 på rad ' + signed(S.FIVE_ROW[Math.floor(Math.random() * S.FIVE_ROW.length)]);
+      } else {
+        clearInterval(timer);
+        el.textContent = '5 på rad ' + signed(value);
+      }
+    }, 70);
+  }
+
+  function slotMarkup(slot, action, label) {
+    var when = new Date(slot.updatedAt);
+    var date = isNaN(when.getTime()) ? '' : when.toLocaleDateString('nb-NO', { day: 'numeric', month: 'short', year: 'numeric' });
+    return '<article class="slot"><strong>' + formatScore(slot.score) + ' poeng</strong><p>'
+      + slot.verses + ' vers · rekke ' + slot.streak + (date ? ' · ' + date : '')
+      + '</p><button type="button" class="secondary" data-' + action + '="' + esc(slot.id) + '">' + label + '</button></article>';
+  }
+
+  function renderGate() {
+    var gate = document.getElementById('gate');
+    var list = document.getElementById('slot-list');
+    var overwrite = document.getElementById('overwrite');
+    var overwriteList = document.getElementById('overwrite-list');
+    gate.hidden = !!state.game && !state.overwrite;
+    list.innerHTML = state.store.slots.map(function (slot) {
+      return slotMarkup(slot, 'continue', 'Fortsett');
+    }).join('');
+    overwrite.hidden = !state.overwrite;
+    overwriteList.innerHTML = state.overwrite ? state.store.slots.map(function (slot) {
+      return slotMarkup(slot, 'overwrite', 'Overskriv');
+    }).join('') : '';
+    document.getElementById('new-game').hidden = state.overwrite;
+  }
+
+  function renderMenuSlots() {
+    var host = document.getElementById('menu-slots');
+    if (!host) return;
+    host.innerHTML = state.store.slots.map(function (slot) {
+      return slotMarkup(slot, 'continue', 'Fortsett');
+    }).join('');
+  }
+
+  function showGate() {
+    state.overwrite = false;
+    if (state.game) rememberVerse();
+    save();
+    state.game = null;
+    renderGate();
+    renderMenuSlots();
+  }
+
+  function beginNewGame() {
+    var settings = state.game || (state.store.slots[0] || null);
+    if (state.store.slots.length >= 3) {
+      state.overwrite = true;
+      state.game = null;
+      renderGate();
+      return;
+    }
+    var game = blankGame(settings);
+    state.store.slots.unshift(game);
+    startGame(game, false);
+  }
+
+  function startGame(game, resume) {
+    state.game = game;
+    state.overwrite = false;
+    document.documentElement.dataset.motion = game.motion;
+    document.getElementById('gate').hidden = true;
+    var requestId = ++state.requestId;
+    loadBible(game.translation).then(function (bible) {
+      if (requestId !== state.requestId) return;
+      useBible(bible, resume);
+    }).catch(function () {
+      if (requestId !== state.requestId) return;
+      showError();
+    });
+  }
+
+  function onGateClick(event) {
+    var button = event.target.closest('button');
+    if (!button) return;
+    if (button.dataset.continue) {
+      var slot = state.store.slots.find(function (item) { return item.id === button.dataset.continue; });
+      if (slot) startGame(slot, true);
+    }
+    if (button.dataset.overwrite) {
+      var index = state.store.slots.findIndex(function (item) { return item.id === button.dataset.overwrite; });
+      if (index < 0) return;
+      var game = blankGame(state.store.slots[index]);
+      state.store.slots.splice(index, 1);
+      state.store.slots.unshift(game);
+      startGame(game, false);
+    }
   }
 
   function pushLog(solved) {
-    state.log.unshift({
+    state.game.log.unshift({
       ref: shortRef(),
       solved: solved,
       awarded: state.round.awarded,
     });
   }
 
-  function commitRound() {
-    state.prefs.session = Q.addRound(state.prefs.session, state.round.awarded);
-    state.prefs.inProgress = null;
+  function touchScore(delta) {
+    state.game.score = Math.round((state.game.score + delta) * 10) / 10;
+    state.scoreDelta = delta;
+  }
+
+  function awardLevel(field, wrongs) {
+    var points = S.pointsAfterWrongs(wrongs);
+    state.round[field] = points;
+    state.round.guessing += points;
+    touchScore(points);
+    if (wrongs > 0) state.game.streak = 0;
+  }
+
+  function finishVerse(gaveUp) {
+    var result = S.completeVerse({
+      gaveUp: gaveUp,
+      helpUsed: state.round.helpUsed,
+      bookDone: state.round.bookPoints !== null,
+      chapterDone: state.round.chapterPoints !== null,
+      verseDone: state.round.versePoints !== null,
+      bookWrongs: state.round.bookWrongs,
+      chapterWrongs: state.round.chapterWrongs,
+      verseWrongs: state.round.verseWrongs,
+      guessing: state.round.guessing,
+      streak: state.game.streak,
+    });
+    state.game.streak = result.streak;
+    if (result.bonus) {
+      state.game.score = Math.round((state.game.score + result.bonus) * 10) / 10;
+      state.scoreDelta = Math.round(((state.scoreDelta || 0) + result.bonus) * 10) / 10;
+    }
+    state.round.awarded = result.total;
+    state.round.status = gaveUp ? 'revealed' : 'correct';
+    state.game.verses += 1;
+    state.game.inProgress = null;
+    pushLog(!gaveUp);
     save();
   }
 
@@ -347,29 +555,35 @@
   }
 
   function levelHint() {
-    if (state.round.status !== 'play') return false;
+    if (!state.game || state.round.status !== 'play') return false;
     var roll = Math.random();
+    var placed = false;
     if (!state.solvedBook) {
-      state.round = Q.applyBookHint(state.round);
       state.bookWindow = Q.bookHintWindow(state.bible.books.length, state.target.bookIndex, roll);
-      return true;
-    }
-    if (!state.solvedChapter) {
+      placed = true;
+    } else if (!state.solvedChapter) {
       var numbers = chapterNumbers(state.bible.books[state.target.bookIndex]);
       var index = numbers.indexOf(state.target.chapter);
       if (index < 0) return false;
-      state.round = Q.applyBookHint(state.round);
       state.chapterWindow = Q.bookHintWindow(numbers.length, index, roll);
-      return true;
+      placed = true;
+    } else {
+      var verses = verseList();
+      var verseIndex = -1;
+      for (var i = 0; i < verses.length; i += 1) {
+        if (verses[i].key === state.target.key) verseIndex = i;
+      }
+      if (verseIndex < 0) return false;
+      state.verseWindow = Q.bookHintWindow(verses.length, verseIndex, roll);
+      placed = true;
     }
-    var verses = verseList();
-    var verseIndex = -1;
-    for (var i = 0; i < verses.length; i += 1) {
-      if (verses[i].key === state.target.key) verseIndex = i;
-    }
-    if (verseIndex < 0) return false;
-    state.round = Q.applyBookHint(state.round);
-    state.verseWindow = Q.bookHintWindow(verses.length, verseIndex, roll);
+    if (!placed) return false;
+    var draw = S.drawFiveRow(Math.random);
+    state.round.fiveRowUses += 1;
+    state.round.helpUsed = true;
+    state.game.streak = 0;
+    touchScore(draw.value);
+    state.pendingDraw = draw.value;
     return true;
   }
 
@@ -382,7 +596,7 @@
   }
 
   function maybeLys(level) {
-    if (!state.prefs.lys || state.round.status !== 'play') return;
+    if (!state.game || !state.game.lys || state.round.status !== 'play') return;
     var shown = level === 'book' ? state.bookWindow : level === 'chapter' ? state.chapterWindow : state.verseWindow;
     if (shown) return;
     var wrongs = level === 'book' ? state.wrongBooks : level === 'chapter' ? state.wrongChapters : state.wrongVerses;
@@ -391,11 +605,14 @@
   }
 
   function extraHelp() {
-    if (state.round.status !== 'play') return;
+    if (!state.game || state.round.status !== 'play') return;
     var book = state.bible.books[state.target.bookIndex];
     if (!Q.contextCanGrow(book.verses, state.target, state.round.radius)) return;
     state.giveUpArmed = false;
-    state.round = Q.applyExtra(state.round);
+    state.round.radius += 1;
+    state.round.helpUsed = true;
+    state.game.streak = 0;
+    touchScore(-S.CONTEXT_COST);
     rememberVerse();
     save();
     render();
@@ -408,10 +625,8 @@
       render();
       return;
     }
-    state.round = Q.applyGiveUp(state.round);
     state.giveUpArmed = false;
-    pushLog(false);
-    commitRound();
+    finishVerse(true);
     render();
   }
 
@@ -419,11 +634,13 @@
     if (state.round.status !== 'play' || state.solvedBook) return;
     state.giveUpArmed = false;
     if (index === state.target.bookIndex) {
+      awardLevel('bookPoints', state.round.bookWrongs);
       state.solvedBook = true;
       state.step = 'chapter';
     } else if (!state.wrongBooks[index]) {
       state.wrongBooks[index] = true;
-      state.round = Q.applyWrong(state.round);
+      state.round.bookWrongs += 1;
+      state.game.streak = 0;
       maybeLys('book');
     }
     rememberVerse();
@@ -435,11 +652,13 @@
     if (state.round.status !== 'play' || !state.solvedBook || state.solvedChapter) return;
     state.giveUpArmed = false;
     if (number === state.target.chapter) {
+      awardLevel('chapterPoints', state.round.chapterWrongs);
       state.solvedChapter = true;
       state.step = 'verse';
     } else if (!state.wrongChapters[number]) {
       state.wrongChapters[number] = true;
-      state.round = Q.applyWrong(state.round);
+      state.round.chapterWrongs += 1;
+      state.game.streak = 0;
       maybeLys('chapter');
     }
     rememberVerse();
@@ -451,12 +670,12 @@
     if (state.round.status !== 'play' || !state.solvedChapter) return;
     state.giveUpArmed = false;
     if (key === state.target.key) {
-      state.round = Q.applyCorrect(state.round);
-      pushLog(true);
-      commitRound();
+      awardLevel('versePoints', state.round.verseWrongs);
+      finishVerse(false);
     } else if (!state.wrongVerses[key]) {
       state.wrongVerses[key] = true;
-      state.round = Q.applyWrong(state.round);
+      state.round.verseWrongs += 1;
+      state.game.streak = 0;
       maybeLys('verse');
       rememberVerse();
       save();
@@ -471,34 +690,45 @@
     renderActions();
     renderPicker();
     syncMenu();
+    var draw = state.pendingDraw;
+    state.pendingDraw = null;
+    if (draw != null) playDraw(draw);
     requestAnimationFrame(fitPassage);
   }
 
   function renderStats() {
-    var session = state.prefs.session;
+    var game = state.game;
     var playing = state.round.status === 'play';
-    var roundNo = session.rounds + (playing ? 1 : 0);
-    if (roundNo < 1) roundNo = 1;
+    var roundNo = game ? game.verses + (playing && state.target ? 1 : 0) : 0;
     var translation = state.bible ? state.bible.name : '';
-    document.getElementById('quiz-info').textContent = 'Runde ' + roundNo + (translation ? ' · ' + translation : '');
-    var hint = String(state.round.bookHints);
-    if (state.round.extra) hint += ' · ekstra ' + state.round.extra;
+    document.getElementById('quiz-info').textContent = game
+      ? 'Vers ' + roundNo + (translation ? ' · ' + translation : '') + levelLine()
+      : 'Ingen spill';
+    var hint = game && state.target ? String(state.round.fiveRowUses) : '0';
+    if (state.round.radius) hint += ' · kontekst ' + state.round.radius;
     document.getElementById('hint-info').textContent = hint;
-    var score = 'Økt ' + Q.plain(session.score);
-    if (playing) score += ' · runden ' + Q.plain(state.round.points);
-    else if (state.round.status === 'correct' || state.round.status === 'revealed') {
-      score += ' · sist ' + signed(state.round.awarded);
-    }
-    document.getElementById('score-info').textContent = score;
+    document.getElementById('score-info').textContent = game ? formatScore(game.score) : '0';
     var list = document.getElementById('log-list');
-    if (!state.log.length) {
+    var log = game ? game.log : [];
+    if (!log.length) {
       list.innerHTML = '<li class="log-empty">Ingen vers ennå.</li>';
-      return;
+    } else {
+      list.innerHTML = log.map(function (item) {
+        var kind = item.solved ? 'is-solved' : 'is-lost';
+        return '<li class="' + kind + '"><span>' + esc(item.ref) + '</span><span>' + signed(item.awarded) + '</span></li>';
+      }).join('');
     }
-    list.innerHTML = state.log.map(function (item) {
-      var kind = item.solved ? 'is-solved' : 'is-lost';
-      return '<li class="' + kind + '"><span>' + esc(item.ref) + '</span><span>' + signed(item.awarded) + '</span></li>';
-    }).join('');
+    paintBoard(state.scoreDelta || 0);
+    state.scoreDelta = 0;
+    renderMenuSlots();
+  }
+
+  function levelLine() {
+    if (!state.target) return '';
+    function bit(label, value) {
+      return label + ' ' + (value === null ? '…' : signed(value));
+    }
+    return ' · ' + bit('Bok', state.round.bookPoints) + ' · ' + bit('Kapittel', state.round.chapterPoints) + ' · ' + bit('Vers', state.round.versePoints);
   }
 
   function passageFit() {
@@ -584,8 +814,8 @@
     var giveUpLabel = state.giveUpArmed ? 'Bekreft tap' : 'Gi opp';
     actions.innerHTML = ''
       + '<div class="action-row">'
-      + '<button type="button" class="secondary" data-act="hint">Hint</button>'
-      + '<button type="button" class="secondary" data-act="extra"' + extraDisabled + '>Ekstra hjelp</button>'
+      + '<button type="button" class="secondary" data-act="hint">5 på rad</button>'
+      + '<button type="button" class="secondary" data-act="extra"' + extraDisabled + '>mer kontekst</button>'
       + '</div>'
       + '<button type="button" class="quiet" data-act="giveup">' + giveUpLabel + '</button>';
   }
@@ -683,25 +913,15 @@
   }
 
   function syncMenu() {
+    var settings = state.game || { translation: 'noblb', motion: 'stille', lys: false };
     document.querySelectorAll('input[name="translation"]').forEach(function (input) {
-      input.checked = input.value === state.prefs.translation;
+      input.checked = input.value === settings.translation;
     });
     document.querySelectorAll('input[name="motion"]').forEach(function (input) {
-      input.checked = input.value === state.prefs.motion;
+      input.checked = input.value === settings.motion;
     });
     var lys = document.getElementById('lys');
-    if (lys) lys.checked = !!state.prefs.lys;
-    var note = document.getElementById('finish-note');
-    var button = document.getElementById('finish-session');
-    if (state.prefs.session.rounds < 1) {
-      note.textContent = 'Spill minst én runde før du avslutter økten.';
-      button.disabled = true;
-    } else {
-      note.textContent = 'Summen er ' + Q.plain(state.prefs.session.score)
-        + ' på ' + state.prefs.session.rounds
-        + (state.prefs.session.rounds === 1 ? ' runde.' : ' runder.');
-      button.disabled = false;
-    }
+    if (lys) lys.checked = !!settings.lys;
     document.getElementById('toggle-log').setAttribute('aria-pressed', state.panel === 'log' ? 'true' : 'false');
     document.getElementById('toggle-menu').setAttribute('aria-pressed', state.panel === 'menu' ? 'true' : 'false');
     logPanel.classList.toggle('is-open', state.panel === 'log');
@@ -709,10 +929,11 @@
   }
 
   function setTranslation(id) {
+    if (!state.game) return;
     if (id !== 'noblb' && id !== 'norsk1930' && id !== 'bsb') return;
-    if (id === state.prefs.translation && state.bible && state.bible.id === id) return;
-    state.prefs.translation = id;
-    state.prefs.inProgress = null;
+    if (id === state.game.translation && state.bible && state.bible.id === id) return;
+    state.game.translation = id;
+    state.game.inProgress = null;
     save();
     var requestId = ++state.requestId;
     passageFit().classList.remove('has-company');
@@ -727,7 +948,8 @@
   }
 
   function setLys(on) {
-    state.prefs.lys = !!on;
+    if (!state.game) return;
+    state.game.lys = !!on;
     save();
   }
 
@@ -736,27 +958,11 @@
   }
 
   function setMotion(motion) {
+    if (!state.game) return;
     if (motion !== 'stille' && motion !== 'rolig' && motion !== 'levende') return;
-    state.prefs.motion = motion;
+    state.game.motion = motion;
     document.documentElement.dataset.motion = motion;
     save();
-  }
-
-  function finishSession() {
-    var result = Q.finishSession(state.prefs.session, state.prefs.previous);
-    if (!result.ok) return;
-    state.prefs.previous = result.nextPrevious;
-    state.prefs.session = result.nextSession;
-    state.prefs.inProgress = null;
-    state.log = [];
-    state.prefs.log = [];
-    save();
-    document.getElementById('summary-text').textContent = result.text;
-    document.getElementById('summary-rounds').textContent = result.rounds + (result.rounds === 1 ? ' runde.' : ' runder.');
-    state.awaitNewRound = true;
-    state.panel = null;
-    syncMenu();
-    summary.showModal();
   }
 
   function showError() {
@@ -774,25 +980,24 @@
 
   document.getElementById('toggle-log').addEventListener('click', function () { togglePanel('log'); });
   document.getElementById('toggle-menu').addEventListener('click', function () { togglePanel('menu'); });
+  menuPanel.addEventListener('click', onGateClick);
   menuPanel.addEventListener('change', function (event) {
     if (event.target.name === 'translation') setTranslation(event.target.value);
     if (event.target.name === 'motion') setMotion(event.target.value);
     if (event.target.id === 'lys') setLys(event.target.checked);
   });
-  document.getElementById('finish-session').addEventListener('click', finishSession);
-  document.getElementById('new-session').addEventListener('click', function () { summary.close(); });
-  summary.addEventListener('close', function () {
-    if (!state.awaitNewRound) return;
-    state.awaitNewRound = false;
-    if (state.bible) newRound();
-  });
-  summary.addEventListener('click', function (event) {
-    if (event.target === summary) summary.close();
-  });
   picker.addEventListener('click', onPickerClick);
   actions.addEventListener('click', onActionClick);
+  document.getElementById('gate').addEventListener('click', onGateClick);
+  document.getElementById('new-game').addEventListener('click', function () { beginNewGame(); });
+  document.getElementById('menu-new').addEventListener('click', function () { beginNewGame(); });
+  document.getElementById('menu-continue').addEventListener('click', showGate);
+  document.getElementById('overwrite-cancel').addEventListener('click', function () {
+    state.overwrite = false;
+    renderGate();
+  });
 
-  document.documentElement.dataset.motion = state.prefs.motion;
+  document.documentElement.dataset.motion = state.game ? state.game.motion : 'stille';
   if (window.ResizeObserver) {
     new ResizeObserver(function () {
       var key = passage.clientWidth + 'x' + passage.clientHeight;
@@ -803,12 +1008,5 @@
   } else {
     window.addEventListener('resize', fitPassage);
   }
-  var bootId = ++state.requestId;
-  loadBible(state.prefs.translation).then(function (bible) {
-    if (bootId !== state.requestId) return;
-    useBible(bible, true);
-  }).catch(function () {
-    if (bootId !== state.requestId) return;
-    showError();
-  });
+  renderGate();
 })();

@@ -65,6 +65,17 @@
         </aside>
 
         <main>
+          <div class="board" id="board">
+            <div class="board-main">
+              <span class="board-label">Score</span>
+              <span class="board-digits" id="board-digits">0</span>
+              <span class="board-delta" id="board-delta" hidden></span>
+            </div>
+            <div class="board-side">
+              <span class="streak-badge" id="board-streak">Rekke 0</span>
+              <span class="draw" id="draw" hidden>5 på rad</span>
+            </div>
+          </div>
           <article class="scroll">
             <div class="sheen" aria-hidden="true"></div>
             <div class="passage" id="passage">
@@ -99,20 +110,23 @@
           <fieldset>
             <legend>Lys</legend>
             <label class="choice"><input type="checkbox" id="lys" /> Lys</label>
-            <p class="hint-note">Når det første gjettet på et nivå er feil, markeres fem muligheter der. Det koster 1 poeng i tillegg til feilgjettet, og skjer bare én gang per nivå.</p>
+            <p class="hint-note">Når det første gjettet på et nivå er feil, kjører «5 på rad» der. Det trekker et tilfeldig poengutslag og skjer bare én gang per nivå.</p>
           </fieldset>
 
           <section class="panel">
-            <h3>Økt</h3>
-            <p id="finish-note"></p>
-            <button type="button" class="secondary wide" id="finish-session">Avslutt økt</button>
+            <h3>Spill</h3>
+            <div class="slot-actions">
+              <button type="button" class="secondary" id="menu-new">Nytt spill</button>
+              <button type="button" class="secondary" id="menu-continue">Fortsett</button>
+            </div>
+            <div id="menu-slots"></div>
           </section>
 
           <section class="panel about">
             <h3>Slik spiller du</h3>
-            <p>Du får ett vers uten referanse. Trykk bok, kapittel og vers. Feil knapp blir rød og koster 1 poeng. Riktig knapp blir grønn og åpner neste nivå. Runden er vunnet når verset stemmer.</p>
-            <p>Hint markerer fem muligheter på rad der du står: bøker, kapitler eller vers. Én av dem er riktig, og plasseringen varierer. Er det færre enn fem, markeres alle. Det koster 1 poeng. Med Lys på skjer det samme automatisk ved det første feilgjettet på hvert nivå. Ekstra hjelp viser ett vers før og ett etter, ett trinn om gangen, og koster 1 poeng per trinn.</p>
-            <p>Runden starter på 4 poeng. Riktig vers gir poengene som er igjen, også når de er negative. Gi opp gir minus det du har brukt, eller 0 hvis du ikke har brukt noe. Summen sammenlignes med forrige økt når du avslutter.</p>
+            <p>Du får ett vers uten referanse. Trykk bok, kapittel og vers. Feil knapp blir rød. Riktig knapp blir grønn og åpner neste nivå. Riktig på første forsøk gir 45, deretter 30, 20, 10 og 5. Fra sjette forsøk gir nivået 0.</p>
+            <p>«5 på rad» markerer fem muligheter på nivået du står på. Trekkingen gir et tilfeldig poengutslag. «mer kontekst» viser ett vers før og etter og koster 2 poeng. Lys kjører «5 på rad» automatisk ved det første feilgjettet på hvert nivå.</p>
+            <p>Feil gjetting trekker ikke poeng under null på et nivå. Hjelpemidler trekkes fra totalsummen, som kan bli negativ. Gi opp beholder poengene du allerede har fått i verset. Tre rene vers på rad gir dobbel poengsum fra gjettingen. Hjelpemidler og feil nullstiller rekken.</p>
 
             <h3>Om tekstene</h3>
             <h4>En Levende Bok</h4>
@@ -127,9 +141,25 @@
             <p>The Holy Bible, Berean Standard Bible, is produced in cooperation with Bible Hub, Discovery Bible, unfoldingWord, Bible Aquifer, OpenBible.com, and the Berean Bible Translation Committee. This text of God’s Word has been dedicated to the public domain.</p>
             <p>Kilde: <a href="https://bereanbible.com/bsb.txt" rel="noopener">bereanbible.com/bsb.txt</a>. Quizen bruker bare Det nye testamente. Tomme versnummer i kilden, som Joh 5,4, er utelatt.</p>
 
-            <p class="version">Bibel-quiz v0.3 · Satsen er Source Serif 4, lisensiert under SIL Open Font License.</p>
+            <p class="version">Bibel-quiz v0.4 · Satsen er Source Serif 4, lisensiert under SIL Open Font License.</p>
           </section>
         </aside>
+      </div>
+    </div>
+
+    <div class="gate" id="gate" hidden>
+      <div class="gate-card">
+        <p class="eyebrow">Det nye testamente</p>
+        <h2>Bibel-quiz</h2>
+        <div id="slot-list"></div>
+        <div class="slot-actions">
+          <button type="button" class="primary" id="new-game">Nytt spill</button>
+        </div>
+        <div id="overwrite" hidden>
+          <p>Tre spill er lagret. Hvilket skal overskrives?</p>
+          <div id="overwrite-list"></div>
+          <button type="button" class="quiet" id="overwrite-cancel">Avbryt</button>
+        </div>
       </div>
     </div>
 
@@ -142,6 +172,7 @@
     </dialog>
 
     <script src="logic.js"></script>
+    <script src="score.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

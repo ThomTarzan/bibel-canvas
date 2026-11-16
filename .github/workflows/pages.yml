@@ -34,7 +34,7 @@ jobs:
         run: npm test
 
       - name: Test Bibel-quiz
-        run: node --test quiz/tools/logic.test.mjs quiz/tools/texts.test.mjs
+        run: node --test quiz/tools/logic.test.mjs quiz/tools/score.test.mjs quiz/tools/texts.test.mjs
 
       - name: Bygg
         run: npm run build
