@@ -1,8 +1,8 @@
 (function () {
   var Q = window.BibelQuiz;
-  var KEY = 'bibel-quiz.v1';
+  var KEY = 'bibel-quiz.v2';
 
-  var BOOKS = [
+  var BOOKS_NB = [
     { id: 'mat', name: 'Matteus', abbr: 'Matt' },
     { id: 'mrk', name: 'Markus', abbr: 'Mark' },
     { id: 'luk', name: 'Lukas', abbr: 'Luk' },
@@ -32,14 +32,43 @@
     { id: 'aap', name: 'Johannes’ åpenbaring', abbr: 'Åp' },
   ];
 
-  var scoreline = document.getElementById('scoreline');
-  var stake = document.getElementById('stake');
+  var BOOKS_EN = [
+    { id: 'mat', name: 'Matthew', abbr: 'Matt' },
+    { id: 'mrk', name: 'Mark', abbr: 'Mark' },
+    { id: 'luk', name: 'Luke', abbr: 'Luke' },
+    { id: 'joh', name: 'John', abbr: 'John' },
+    { id: 'apg', name: 'Acts', abbr: 'Acts' },
+    { id: 'rom', name: 'Romans', abbr: 'Rom' },
+    { id: '1kor', name: '1 Corinthians', abbr: '1 Cor' },
+    { id: '2kor', name: '2 Corinthians', abbr: '2 Cor' },
+    { id: 'gal', name: 'Galatians', abbr: 'Gal' },
+    { id: 'efe', name: 'Ephesians', abbr: 'Eph' },
+    { id: 'fil', name: 'Philippians', abbr: 'Phil' },
+    { id: 'kol', name: 'Colossians', abbr: 'Col' },
+    { id: '1tess', name: '1 Thessalonians', abbr: '1 Thess' },
+    { id: '2tess', name: '2 Thessalonians', abbr: '2 Thess' },
+    { id: '1tim', name: '1 Timothy', abbr: '1 Tim' },
+    { id: '2tim', name: '2 Timothy', abbr: '2 Tim' },
+    { id: 'tit', name: 'Titus', abbr: 'Titus' },
+    { id: 'flm', name: 'Philemon', abbr: 'Phlm' },
+    { id: 'heb', name: 'Hebrews', abbr: 'Heb' },
+    { id: 'jak', name: 'James', abbr: 'Jas' },
+    { id: '1pet', name: '1 Peter', abbr: '1 Pet' },
+    { id: '2pet', name: '2 Peter', abbr: '2 Pet' },
+    { id: '1joh', name: '1 John', abbr: '1 John' },
+    { id: '2joh', name: '2 John', abbr: '2 John' },
+    { id: '3joh', name: '3 John', abbr: '3 John' },
+    { id: 'jud', name: 'Jude', abbr: 'Jude' },
+    { id: 'aap', name: 'Revelation', abbr: 'Rev' },
+  ];
+
   var passage = document.getElementById('passage');
   var feedback = document.getElementById('feedback');
   var actions = document.getElementById('actions');
   var picker = document.getElementById('picker');
-  var menu = document.getElementById('menu');
   var summary = document.getElementById('summary');
+  var logPanel = document.getElementById('log-panel');
+  var menuPanel = document.getElementById('menu-panel');
 
   var state = {
     prefs: loadPrefs(),
@@ -47,16 +76,22 @@
     bible: null,
     target: null,
     round: Q.newRound(),
-    selection: blankSelection(),
     step: 'book',
     giveUpArmed: false,
     awaitNewRound: false,
     requestId: 0,
+    wrongBooks: {},
+    wrongChapters: {},
+    wrongVerses: {},
+    bookWindow: null,
+    solvedBook: false,
+    solvedChapter: false,
+    log: [],
+    panel: null,
+    lastBox: '',
+    fitLock: false,
   };
-
-  function blankSelection() {
-    return { bookIndex: null, chapter: null, key: null };
-  }
+  state.log = state.prefs.log;
 
   function loadPrefs() {
     var fallback = {
@@ -65,14 +100,17 @@
       session: { score: 0, rounds: 0 },
       previous: null,
       inProgress: null,
+      log: [],
     };
     try {
       var data = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (!data) return fallback;
       var motion = data.motion === 'rolig' || data.motion === 'levende' ? data.motion : 'stille';
       var session = data.session || {};
+      var translation = data.translation;
+      if (translation !== 'norsk1930' && translation !== 'bsb') translation = 'noblb';
       return {
-        translation: data.translation === 'norsk1930' ? 'norsk1930' : 'noblb',
+        translation: translation,
         motion: motion,
         session: {
           score: numberOr(session.score, 0),
@@ -82,6 +120,7 @@
           ? { score: data.previous.score, rounds: numberOr(data.previous.rounds, 0) }
           : null,
         inProgress: data.inProgress || null,
+        log: Array.isArray(data.log) ? data.log : [],
       };
     } catch (err) {
       return fallback;
@@ -93,7 +132,27 @@
   }
 
   function save() {
+    state.prefs.log = state.log;
     localStorage.setItem(KEY, JSON.stringify(state.prefs));
+  }
+
+  function catalogFor(id) {
+    return id === 'bsb' ? BOOKS_EN : BOOKS_NB;
+  }
+
+  function english() {
+    return state.bible && state.bible.id === 'bsb';
+  }
+
+  function resetBoard() {
+    state.step = 'book';
+    state.giveUpArmed = false;
+    state.wrongBooks = {};
+    state.wrongChapters = {};
+    state.wrongVerses = {};
+    state.bookWindow = null;
+    state.solvedBook = false;
+    state.solvedChapter = false;
   }
 
   function rememberVerse() {
@@ -106,15 +165,27 @@
       bookId: state.bible.books[state.target.bookIndex].id,
       chapter: state.target.chapter,
       key: state.target.key,
-      hints: state.round.hints,
-      wrongs: state.round.wrongs,
-      feedback: state.round.feedback,
+      round: {
+        points: state.round.points,
+        bookHints: state.round.bookHints,
+        extra: state.round.extra,
+        wrongs: state.round.wrongs,
+        radius: state.round.radius,
+      },
+      step: state.step,
+      wrongBooks: Object.keys(state.wrongBooks),
+      wrongChapters: Object.keys(state.wrongChapters),
+      wrongVerses: Object.keys(state.wrongVerses),
+      bookWindow: state.bookWindow,
+      solvedBook: state.solvedBook,
+      solvedChapter: state.solvedChapter,
     };
   }
 
   function prepareBible(data) {
+    var catalog = catalogFor(data.id);
     var byId = new Map(data.books.map(function (book) { return [book.id, book]; }));
-    var books = BOOKS.map(function (meta, bookIndex) {
+    var books = catalog.map(function (meta, bookIndex) {
       var raw = byId.get(meta.id);
       if (!raw) throw new Error('Mangler bok ' + meta.id);
       var chapters = raw.chapters.map(function (chapter) {
@@ -154,7 +225,7 @@
 
   function loadBible(id) {
     if (state.cache.has(id)) return Promise.resolve(state.cache.get(id));
-    return fetch('data/' + id + '.json?v=1').then(function (response) {
+    return fetch('data/' + id + '.json?v=2').then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
     }).then(function (data) {
@@ -173,38 +244,41 @@
     newRound();
   }
 
+  function listToMap(list) {
+    var map = {};
+    (list || []).forEach(function (key) { map[key] = true; });
+    return map;
+  }
+
   function restoreRound(bible) {
     var saved = state.prefs.inProgress;
-    if (!saved || saved.translation !== bible.id) return false;
+    if (!saved || saved.translation !== bible.id || !saved.round) return false;
     var bookIndex = bible.books.findIndex(function (book) { return book.id === saved.bookId; });
     if (bookIndex < 0) return false;
     var verse = bible.books[bookIndex].verses.find(function (item) {
       return item.chapter === saved.chapter && item.key === saved.key;
     });
     if (!verse) return false;
-    var hints = clamp(saved.hints, 0, Q.MAX_HINTS);
-    var wrongs = clamp(saved.wrongs, 0, 12);
-    var points = Q.START_POINTS - hints - wrongs;
-    if (points < 1) return false;
+    var savedRound = saved.round;
     state.target = verse;
     state.round = {
-      points: points,
-      hints: hints,
-      wrongs: wrongs,
-      radius: Math.min(Q.MAX_HINTS, hints + wrongs),
+      points: numberOr(savedRound.points, Q.START_POINTS),
+      bookHints: numberOr(savedRound.bookHints, 0),
+      extra: numberOr(savedRound.extra, 0),
+      wrongs: numberOr(savedRound.wrongs, 0),
+      radius: numberOr(savedRound.radius, 0),
       status: 'play',
-      feedback: typeof saved.feedback === 'string' ? saved.feedback : '',
       awarded: 0,
     };
-    state.selection = blankSelection();
-    state.step = 'book';
+    state.step = saved.step === 'chapter' || saved.step === 'verse' ? saved.step : 'book';
+    state.wrongBooks = listToMap(saved.wrongBooks);
+    state.wrongChapters = listToMap(saved.wrongChapters);
+    state.wrongVerses = listToMap(saved.wrongVerses);
+    state.bookWindow = saved.bookWindow && Number.isFinite(saved.bookWindow.start) ? saved.bookWindow : null;
+    state.solvedBook = !!saved.solvedBook;
+    state.solvedChapter = !!saved.solvedChapter;
     state.giveUpArmed = false;
     return true;
-  }
-
-  function clamp(value, min, max) {
-    var n = Number.isFinite(value) ? value : min;
-    return Math.max(min, Math.min(max, n));
   }
 
   function newRound() {
@@ -212,12 +286,35 @@
     var index = Math.floor(Math.random() * state.bible.flat.length);
     state.target = state.bible.flat[index];
     state.round = Q.newRound();
-    state.selection = blankSelection();
-    state.step = 'book';
-    state.giveUpArmed = false;
+    resetBoard();
     rememberVerse();
     save();
     render();
+  }
+
+  function shortRef() {
+    var book = state.bible.books[state.target.bookIndex];
+    var sep = english() ? ':' : ',';
+    return book.abbr + ' ' + state.target.chapter + sep + state.target.label;
+  }
+
+  function fullRef() {
+    var book = state.bible.books[state.target.bookIndex];
+    var sep = english() ? ':' : ',';
+    return book.name + ' ' + state.target.chapter + sep + state.target.label;
+  }
+
+  function signed(n) {
+    if (n > 0) return '+' + n;
+    return Q.plain(n);
+  }
+
+  function pushLog(solved) {
+    state.log.unshift({
+      ref: shortRef(),
+      solved: solved,
+      awarded: state.round.awarded,
+    });
   }
 
   function commitRound() {
@@ -226,10 +323,22 @@
     save();
   }
 
-  function hint() {
-    if (!Q.canHint(state.round)) return;
+  function bookHint() {
+    if (state.round.status !== 'play' || state.solvedBook) return;
     state.giveUpArmed = false;
-    state.round = Q.applyHint(state.round);
+    state.round = Q.applyBookHint(state.round);
+    state.bookWindow = Q.bookHintWindow(state.bible.books.length, state.target.bookIndex, Math.random());
+    rememberVerse();
+    save();
+    render();
+  }
+
+  function extraHelp() {
+    if (state.round.status !== 'play') return;
+    var book = state.bible.books[state.target.bookIndex];
+    if (!Q.contextCanGrow(book.verses, state.target, state.round.radius)) return;
+    state.giveUpArmed = false;
+    state.round = Q.applyExtra(state.round);
     rememberVerse();
     save();
     render();
@@ -244,66 +353,92 @@
     }
     state.round = Q.applyGiveUp(state.round);
     state.giveUpArmed = false;
+    pushLog(false);
     commitRound();
     render();
   }
 
-  function submit() {
-    if (state.round.status !== 'play') return;
-    var sel = state.selection;
-    if (sel.bookIndex == null || sel.chapter == null || sel.key == null) return;
+  function chooseBook(index) {
+    if (state.round.status !== 'play' || state.solvedBook) return;
     state.giveUpArmed = false;
-    var kind = Q.judge(state.target, sel);
-    state.round = Q.applyGuess(state.round, kind);
-    if (state.round.status === 'play') {
-      if (kind === 'book') {
-        state.selection = blankSelection();
-        state.step = 'book';
-      } else if (kind === 'chapter') {
-        state.selection.chapter = null;
-        state.selection.key = null;
-        state.step = 'chapter';
-      } else {
-        state.selection.key = null;
-        state.step = 'verse';
-      }
+    if (index === state.target.bookIndex) {
+      state.solvedBook = true;
+      state.step = 'chapter';
+    } else if (!state.wrongBooks[index]) {
+      state.wrongBooks[index] = true;
+      state.round = Q.applyWrong(state.round);
+    }
+    rememberVerse();
+    save();
+    render();
+  }
+
+  function chooseChapter(number) {
+    if (state.round.status !== 'play' || !state.solvedBook || state.solvedChapter) return;
+    state.giveUpArmed = false;
+    if (number === state.target.chapter) {
+      state.solvedChapter = true;
+      state.step = 'verse';
+    } else if (!state.wrongChapters[number]) {
+      state.wrongChapters[number] = true;
+      state.round = Q.applyWrong(state.round);
+    }
+    rememberVerse();
+    save();
+    render();
+  }
+
+  function chooseVerse(key) {
+    if (state.round.status !== 'play' || !state.solvedChapter) return;
+    state.giveUpArmed = false;
+    if (key === state.target.key) {
+      state.round = Q.applyCorrect(state.round);
+      pushLog(true);
+      commitRound();
+    } else if (!state.wrongVerses[key]) {
+      state.wrongVerses[key] = true;
+      state.round = Q.applyWrong(state.round);
       rememberVerse();
       save();
-    } else {
-      commitRound();
     }
     render();
   }
 
-  function reference() {
-    var book = state.bible.books[state.target.bookIndex];
-    return book.name + ' ' + state.target.chapter + ',' + state.target.label;
-  }
-
-  function signed(n) {
-    if (n > 0) return '+' + n;
-    return Q.plain(n);
-  }
-
   function render() {
-    var session = state.prefs.session;
-    var previous = state.prefs.previous;
-    scoreline.textContent = 'Sum ' + Q.plain(session.score)
-      + (previous ? ' · Forrige ' + Q.plain(previous.score) : '')
-      + ' · ' + session.rounds + (session.rounds === 1 ? ' runde' : ' runder');
-
-    if (state.round.status === 'play') {
-      var loss = Q.lossValue(state.round.hints, state.round.wrongs);
-      stake.textContent = 'Riktig gir ' + state.round.points + ' poeng. Gi opp gir ' + Q.plain(loss) + ' poeng.';
-    } else {
-      stake.textContent = '';
-    }
-
+    renderStats();
     renderPassage();
     renderFeedback();
     renderActions();
     renderPicker();
+    syncMenu();
     requestAnimationFrame(fitPassage);
+  }
+
+  function renderStats() {
+    var session = state.prefs.session;
+    var playing = state.round.status === 'play';
+    var roundNo = session.rounds + (playing ? 1 : 0);
+    if (roundNo < 1) roundNo = 1;
+    var translation = state.bible ? state.bible.name : '';
+    document.getElementById('quiz-info').textContent = 'Runde ' + roundNo + (translation ? ' · ' + translation : '');
+    var hint = String(state.round.bookHints);
+    if (state.round.extra) hint += ' · ekstra ' + state.round.extra;
+    document.getElementById('hint-info').textContent = hint;
+    var score = 'Økt ' + Q.plain(session.score);
+    if (playing) score += ' · runden ' + Q.plain(state.round.points);
+    else if (state.round.status === 'correct' || state.round.status === 'revealed') {
+      score += ' · sist ' + signed(state.round.awarded);
+    }
+    document.getElementById('score-info').textContent = score;
+    var list = document.getElementById('log-list');
+    if (!state.log.length) {
+      list.innerHTML = '<li class="log-empty">Ingen vers ennå.</li>';
+      return;
+    }
+    list.innerHTML = state.log.map(function (item) {
+      var kind = item.solved ? 'is-solved' : 'is-lost';
+      return '<li class="' + kind + '"><span>' + esc(item.ref) + '</span><span>' + signed(item.awarded) + '</span></li>';
+    }).join('');
   }
 
   function passageFit() {
@@ -314,10 +449,11 @@
   }
 
   function renderPassage() {
+    if (!state.bible || !state.target) return;
     var book = state.bible.books[state.target.bookIndex];
     var windowVerses = Q.contextFor(book.verses, state.target, state.round.radius);
     var fit = passageFit();
-    var ref = state.round.status === 'play' ? '' : '<p class="reference">' + esc(reference()) + '</p>';
+    var ref = state.round.status === 'play' ? '' : '<p class="reference">' + esc(fullRef()) + '</p>';
     fit.classList.toggle('has-company', windowVerses.length > 1);
     fit.innerHTML = ref + windowVerses.map(function (verse) {
       return '<p class="verse' + (verse.target ? ' is-target' : '') + '">' + esc(verse.text) + '</p>';
@@ -325,8 +461,10 @@
   }
 
   function fitPassage() {
+    if (state.fitLock) return;
     var fit = document.getElementById('passage-fit');
     if (!fit || !passage.clientHeight) return;
+    state.fitLock = true;
     var availableH = Math.max(0, passage.clientHeight - 8);
     var availableW = Math.max(0, passage.clientWidth - 4);
     fit.classList.remove('is-tight');
@@ -336,6 +474,7 @@
       best = fitSize(fit, availableH, availableW, 12);
     }
     fit.style.fontSize = (best || 12) + 'px';
+    state.fitLock = false;
   }
 
   function fitSize(fit, availableH, availableW, floor) {
@@ -358,19 +497,21 @@
   function renderFeedback() {
     var round = state.round;
     feedback.className = 'feedback';
+    if (!state.bible) {
+      feedback.textContent = '';
+      return;
+    }
     if (round.status === 'correct') {
       feedback.classList.add('is-correct');
-      feedback.textContent = 'Riktig. ' + reference() + '. ' + signed(round.awarded) + ' poeng.';
+      feedback.textContent = 'Riktig. ' + fullRef() + '. ' + signed(round.awarded) + ' poeng.';
       return;
     }
     if (round.status === 'revealed') {
       feedback.classList.add('is-loss');
-      var lead = round.feedback && round.feedback !== 'Tap' ? round.feedback + '. ' : '';
-      feedback.textContent = lead + 'Tap. ' + reference() + '. ' + signed(round.awarded) + ' poeng.';
+      feedback.textContent = 'Tap. ' + fullRef() + '. ' + signed(round.awarded) + ' poeng.';
       return;
     }
-    if (round.feedback) feedback.classList.add('is-wrong');
-    feedback.textContent = round.feedback || '';
+    feedback.textContent = '';
   }
 
   function renderActions() {
@@ -378,66 +519,81 @@
       actions.innerHTML = '<button type="button" class="primary wide" data-act="next">Neste vers</button>';
       return;
     }
-    var room = Q.canHint(state.round)
-      ? Math.min(Q.MAX_HINTS - state.round.hints, state.round.points - 1, Q.MAX_HINTS - state.round.radius)
-      : 0;
-    var hintNote = room > 0 ? '−1 · ' + room + ' igjen' : 'ikke flere';
-    var answerDisabled = state.selection.key == null ? ' disabled' : '';
-    var hintDisabled = room > 0 ? '' : ' disabled';
+    var book = state.bible.books[state.target.bookIndex];
+    var hintDisabled = state.solvedBook ? ' disabled' : '';
+    var extraDisabled = Q.contextCanGrow(book.verses, state.target, state.round.radius) ? '' : ' disabled';
     var giveUpLabel = state.giveUpArmed ? 'Bekreft tap' : 'Gi opp';
     actions.innerHTML = ''
       + '<div class="action-row">'
-      + '<button type="button" class="secondary" data-act="hint"' + hintDisabled + '>Hint<span>' + hintNote + '</span></button>'
-      + '<button type="button" class="primary" data-act="answer"' + answerDisabled + '>Svar</button>'
+      + '<button type="button" class="secondary" data-act="hint"' + hintDisabled + '>Hint</button>'
+      + '<button type="button" class="secondary" data-act="extra"' + extraDisabled + '>Ekstra hjelp</button>'
       + '</div>'
       + '<button type="button" class="quiet" data-act="giveup">' + giveUpLabel + '</button>';
   }
 
+  function bookClass(index) {
+    var classes = 'pick';
+    var revealed = state.round.status !== 'play';
+    if (state.wrongBooks[index]) classes += ' is-wrong';
+    if ((state.solvedBook || revealed) && index === state.target.bookIndex) classes += ' is-right';
+    else if (state.bookWindow && index >= state.bookWindow.start && index <= state.bookWindow.end && !state.wrongBooks[index]) {
+      classes += ' is-window';
+    }
+    return classes;
+  }
+
   function renderPicker() {
-    if (!state.bible || state.round.status !== 'play') {
+    if (!state.bible || !state.target) {
       picker.innerHTML = '';
       return;
     }
-    if (state.step === 'chapter' && state.selection.bookIndex != null) {
-      picker.innerHTML = chapterStep();
+    if (state.step === 'verse' && state.solvedChapter) {
+      picker.innerHTML = verseStep();
       return;
     }
-    if (state.step === 'verse' && state.selection.chapter != null) {
-      picker.innerHTML = verseStep();
+    if (state.step === 'chapter' && state.solvedBook) {
+      picker.innerHTML = chapterStep();
       return;
     }
     picker.innerHTML = ''
       + '<h2 class="step-title">Hvilken bok?</h2>'
       + '<div class="grid books">'
       + state.bible.books.map(function (book, index) {
-        return '<button type="button" class="pick" data-act="book" data-index="' + index + '" aria-label="' + esc(book.name) + '">' + esc(book.abbr) + '</button>';
+        return '<button type="button" class="' + bookClass(index) + '" data-act="book" data-index="' + index + '" aria-label="' + esc(book.name) + '">' + esc(book.abbr) + '</button>';
       }).join('')
       + '</div>';
   }
 
   function chapterStep() {
-    var book = state.bible.books[state.selection.bookIndex];
+    var book = state.bible.books[state.target.bookIndex];
+    var revealed = state.round.status !== 'play';
     var buttons = book.chapters.map(function (chapter, index) {
       if (!chapter.length) return '';
       var number = index + 1;
-      return '<button type="button" class="pick" data-act="chapter" data-chapter="' + number + '">' + number + '</button>';
+      var classes = 'pick';
+      if (state.wrongChapters[number]) classes += ' is-wrong';
+      if ((state.solvedChapter || revealed) && number === state.target.chapter) classes += ' is-right';
+      return '<button type="button" class="' + classes + '" data-act="chapter" data-chapter="' + number + '">' + number + '</button>';
     }).join('');
     return ''
-      + '<h2 class="step-title">Hvilket kapittel?</h2>'
-      + '<button type="button" class="back" data-act="back">' + esc(book.name) + ' · bytt bok</button>'
+      + '<h2 class="step-title is-right-label">' + esc(book.name) + '</h2>'
+      + '<p class="step-kicker">Hvilket kapittel?</p>'
       + '<div class="grid chapters">' + buttons + '</div>';
   }
 
   function verseStep() {
-    var book = state.bible.books[state.selection.bookIndex];
-    var chapter = book.chapters[state.selection.chapter - 1] || [];
+    var book = state.bible.books[state.target.bookIndex];
+    var chapter = book.chapters[state.target.chapter - 1] || [];
+    var revealed = state.round.status !== 'play';
     var buttons = chapter.map(function (verse) {
-      var pressed = verse.key === state.selection.key ? 'true' : 'false';
-      return '<button type="button" class="pick" data-act="verse" data-key="' + esc(verse.key) + '" aria-pressed="' + pressed + '">' + esc(verse.label) + '</button>';
+      var classes = 'pick';
+      if (state.wrongVerses[verse.key]) classes += ' is-wrong';
+      if ((state.round.status === 'correct' || revealed) && verse.key === state.target.key) classes += ' is-right';
+      return '<button type="button" class="' + classes + '" data-act="verse" data-key="' + esc(verse.key) + '">' + esc(verse.label) + '</button>';
     }).join('');
     return ''
-      + '<h2 class="step-title">Hvilket vers?</h2>'
-      + '<button type="button" class="back" data-act="back">' + esc(book.name) + ' ' + state.selection.chapter + ' · bytt kapittel</button>'
+      + '<h2 class="step-title">' + esc(book.name) + ' ' + state.target.chapter + '</h2>'
+      + '<p class="step-kicker">Hvilket vers?</p>'
       + '<div class="grid verses">' + buttons + '</div>';
   }
 
@@ -449,39 +605,19 @@
 
   function onPickerClick(event) {
     var button = event.target.closest('button');
-    if (!button || state.round.status !== 'play') return;
+    if (!button) return;
     var act = button.dataset.act;
-    if (act !== 'giveup') state.giveUpArmed = false;
-    if (act === 'book') {
-      state.selection = { bookIndex: Number(button.dataset.index), chapter: null, key: null };
-      state.step = 'chapter';
-      render();
-    } else if (act === 'chapter') {
-      state.selection.chapter = Number(button.dataset.chapter);
-      state.selection.key = null;
-      state.step = 'verse';
-      render();
-    } else if (act === 'verse') {
-      state.selection.key = button.dataset.key;
-      render();
-    } else if (act === 'back') {
-      if (state.step === 'verse') {
-        state.step = 'chapter';
-        state.selection.key = null;
-      } else {
-        state.step = 'book';
-        state.selection = blankSelection();
-      }
-      render();
-    }
+    if (act === 'book') chooseBook(Number(button.dataset.index));
+    else if (act === 'chapter') chooseChapter(Number(button.dataset.chapter));
+    else if (act === 'verse') chooseVerse(button.dataset.key);
   }
 
   function onActionClick(event) {
     var button = event.target.closest('button');
     if (!button) return;
     var act = button.dataset.act;
-    if (act === 'hint') hint();
-    else if (act === 'answer') submit();
+    if (act === 'hint') bookHint();
+    else if (act === 'extra') extraHelp();
     else if (act === 'giveup') giveUp();
     else if (act === 'next') newRound();
   }
@@ -496,19 +632,22 @@
     var note = document.getElementById('finish-note');
     var button = document.getElementById('finish-session');
     if (state.prefs.session.rounds < 1) {
-      note.textContent = 'Spill minst én runde før du avslutter økten. En uferdig runde teller ikke med.';
+      note.textContent = 'Spill minst én runde før du avslutter økten.';
       button.disabled = true;
     } else {
-      note.textContent = 'Summen så langt er ' + Q.plain(state.prefs.session.score)
+      note.textContent = 'Summen er ' + Q.plain(state.prefs.session.score)
         + ' på ' + state.prefs.session.rounds
-        + (state.prefs.session.rounds === 1 ? ' runde.' : ' runder.')
-        + ' En uferdig runde teller ikke med.';
+        + (state.prefs.session.rounds === 1 ? ' runde.' : ' runder.');
       button.disabled = false;
     }
+    document.getElementById('toggle-log').setAttribute('aria-pressed', state.panel === 'log' ? 'true' : 'false');
+    document.getElementById('toggle-menu').setAttribute('aria-pressed', state.panel === 'menu' ? 'true' : 'false');
+    logPanel.classList.toggle('is-open', state.panel === 'log');
+    menuPanel.classList.toggle('is-open', state.panel === 'menu');
   }
 
   function setTranslation(id) {
-    if (id !== 'noblb' && id !== 'norsk1930') return;
+    if (id !== 'noblb' && id !== 'norsk1930' && id !== 'bsb') return;
     if (id === state.prefs.translation && state.bible && state.bible.id === id) return;
     state.prefs.translation = id;
     state.prefs.inProgress = null;
@@ -538,11 +677,14 @@
     state.prefs.previous = result.nextPrevious;
     state.prefs.session = result.nextSession;
     state.prefs.inProgress = null;
+    state.log = [];
+    state.prefs.log = [];
     save();
     document.getElementById('summary-text').textContent = result.text;
     document.getElementById('summary-rounds').textContent = result.rounds + (result.rounds === 1 ? ' runde.' : ' runder.');
     state.awaitNewRound = true;
-    menu.close();
+    state.panel = null;
+    syncMenu();
     summary.showModal();
   }
 
@@ -554,15 +696,14 @@
     picker.innerHTML = '';
   }
 
-  document.getElementById('open-menu').addEventListener('click', function () {
+  function togglePanel(name) {
+    state.panel = state.panel === name ? null : name;
     syncMenu();
-    menu.showModal();
-  });
-  document.getElementById('close-menu').addEventListener('click', function () { menu.close(); });
-  menu.addEventListener('click', function (event) {
-    if (event.target === menu) menu.close();
-  });
-  menu.addEventListener('change', function (event) {
+  }
+
+  document.getElementById('toggle-log').addEventListener('click', function () { togglePanel('log'); });
+  document.getElementById('toggle-menu').addEventListener('click', function () { togglePanel('menu'); });
+  menuPanel.addEventListener('change', function (event) {
     if (event.target.name === 'translation') setTranslation(event.target.value);
     if (event.target.name === 'motion') setMotion(event.target.value);
   });
@@ -581,7 +722,12 @@
 
   document.documentElement.dataset.motion = state.prefs.motion;
   if (window.ResizeObserver) {
-    new ResizeObserver(function () { fitPassage(); }).observe(passage);
+    new ResizeObserver(function () {
+      var key = passage.clientWidth + 'x' + passage.clientHeight;
+      if (key === state.lastBox) return;
+      state.lastBox = key;
+      fitPassage();
+    }).observe(passage);
   } else {
     window.addEventListener('resize', fitPassage);
   }

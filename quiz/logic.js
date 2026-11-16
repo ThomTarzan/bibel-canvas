@@ -5,104 +5,92 @@
   if (root) root.BibelQuiz = api;
 })(typeof window !== 'undefined' ? window : null, function () {
   var START_POINTS = 4;
-  var MAX_HINTS = 3;
+  var BOOK_HINT_WIDTH = 5;
 
   function newRound() {
     return {
       points: START_POINTS,
-      hints: 0,
+      bookHints: 0,
+      extra: 0,
       wrongs: 0,
       radius: 0,
       status: 'play',
-      feedback: '',
       awarded: 0,
     };
   }
 
-  function canHint(round) {
-    return round.status === 'play' && round.hints < MAX_HINTS && round.points > 1 && round.radius < MAX_HINTS;
+  function spent(round) {
+    return round.bookHints + round.extra + round.wrongs;
   }
 
-  function lossValue(hints, wrongs) {
-    var spent = hints + wrongs;
-    return spent > 0 ? -spent : 0;
-  }
-
-  function applyHint(round) {
-    if (!canHint(round)) return round;
-    return {
+  function charge(round, field) {
+    var next = {
       points: round.points - 1,
-      hints: round.hints + 1,
+      bookHints: round.bookHints,
+      extra: round.extra,
       wrongs: round.wrongs,
-      radius: round.radius + 1,
+      radius: round.radius,
       status: 'play',
-      feedback: round.feedback,
       awarded: 0,
     };
+    next[field] = round[field] + 1;
+    return next;
   }
 
-  function judge(target, guess) {
-    if (guess.bookIndex !== target.bookIndex) return 'book';
-    if (guess.chapter !== target.chapter) return 'chapter';
-    if (guess.key !== target.key) return 'verse';
-    return 'correct';
-  }
-
-  function feedbackFor(kind) {
-    if (kind === 'book') return 'Feil bok';
-    if (kind === 'chapter') return 'Riktig bok';
-    if (kind === 'verse') return 'Riktig kapittel';
-    return '';
-  }
-
-  function applyGuess(round, kind) {
+  function applyBookHint(round) {
     if (round.status !== 'play') return round;
-    if (kind === 'correct') {
-      return {
-        points: round.points,
-        hints: round.hints,
-        wrongs: round.wrongs,
-        radius: round.radius,
-        status: 'correct',
-        feedback: 'Riktig',
-        awarded: round.points,
-      };
-    }
-    var feedback = feedbackFor(kind);
-    if (round.points <= 1) {
-      var wrongs = round.wrongs + 1;
-      return {
-        points: 0,
-        hints: round.hints,
-        wrongs: wrongs,
-        radius: round.radius,
-        status: 'revealed',
-        feedback: feedback,
-        awarded: lossValue(round.hints, wrongs),
-      };
-    }
+    return charge(round, 'bookHints');
+  }
+
+  function applyExtra(round) {
+    if (round.status !== 'play') return round;
+    var next = charge(round, 'extra');
+    next.radius = round.radius + 1;
+    return next;
+  }
+
+  function applyWrong(round) {
+    if (round.status !== 'play') return round;
+    return charge(round, 'wrongs');
+  }
+
+  function applyCorrect(round) {
+    if (round.status !== 'play') return round;
     return {
-      points: round.points - 1,
-      hints: round.hints,
-      wrongs: round.wrongs + 1,
-      radius: Math.min(MAX_HINTS, round.radius + 1),
-      status: 'play',
-      feedback: feedback,
-      awarded: 0,
+      points: round.points,
+      bookHints: round.bookHints,
+      extra: round.extra,
+      wrongs: round.wrongs,
+      radius: round.radius,
+      status: 'correct',
+      awarded: round.points,
     };
   }
 
   function applyGiveUp(round) {
     if (round.status !== 'play') return round;
+    var cost = spent(round);
     return {
       points: 0,
-      hints: round.hints,
+      bookHints: round.bookHints,
+      extra: round.extra,
       wrongs: round.wrongs,
       radius: round.radius,
       status: 'revealed',
-      feedback: 'Tap',
-      awarded: lossValue(round.hints, round.wrongs),
+      awarded: cost > 0 ? -cost : 0,
     };
+  }
+
+  function bookHintWindow(bookCount, correctIndex, roll) {
+    var width = Math.min(BOOK_HINT_WIDTH, bookCount);
+    var minStart = Math.max(0, correctIndex - (width - 1));
+    var maxStart = Math.min(correctIndex, bookCount - width);
+    var span = maxStart - minStart + 1;
+    var offset = Math.floor(roll * span);
+    if (offset < 0) offset = 0;
+    if (offset >= span) offset = span - 1;
+    var start = minStart + offset;
+    return { start: start, end: start + width - 1 };
   }
 
   function contextFor(verses, target, radius) {
@@ -126,6 +114,10 @@
       });
     }
     return out;
+  }
+
+  function contextCanGrow(verses, target, radius) {
+    return contextFor(verses, target, radius + 1).length > contextFor(verses, target, radius).length;
   }
 
   function addRound(session, awarded) {
@@ -163,15 +155,17 @@
 
   return {
     START_POINTS: START_POINTS,
-    MAX_HINTS: MAX_HINTS,
+    BOOK_HINT_WIDTH: BOOK_HINT_WIDTH,
     newRound: newRound,
-    canHint: canHint,
-    lossValue: lossValue,
-    applyHint: applyHint,
-    judge: judge,
-    applyGuess: applyGuess,
+    spent: spent,
+    applyBookHint: applyBookHint,
+    applyExtra: applyExtra,
+    applyWrong: applyWrong,
+    applyCorrect: applyCorrect,
     applyGiveUp: applyGiveUp,
+    bookHintWindow: bookHintWindow,
     contextFor: contextFor,
+    contextCanGrow: contextCanGrow,
     addRound: addRound,
     plain: plain,
     comparisonText: comparisonText,
